@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Portal - Sheetx.io</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind & DaisyUI -->
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['"Plus Jakarta Sans"', 'sans-serif'] },
+                    colors: {
+                        primary: '#8b5cf6',
+                        secondary: '#3b82f6',
+                        dark: '#0f172a',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #0f172a; color: #f8fafc; overflow-x: hidden; }
+        .page-section { display: none; animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+        .page-section.active { display: block; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Override daisyUI primary */
+        :root {
+            --p: 258 79% 66%; /* #8b5cf6 */
+            --s: 217 91% 60%; /* #3b82f6 */
+        }
+    </style>
+</head>
+<body class="antialiased flex h-screen overflow-hidden selection:bg-primary selection:text-white bg-base-300">
+
+    <!-- Sidebar -->
+    <aside class="w-64 bg-base-200 border-r border-white/5 flex flex-col h-full z-20 shrink-0 shadow-2xl shadow-black/50">
+        <div class="p-6 border-b border-white/5 flex justify-center">
+            <a href="#dashboard" class="flex items-center gap-2">
+                <img src="/api/logo?v=3" alt="Sheetx Logo" class="h-8 object-contain">
+            </a>
+        </div>
+        <nav class="flex-1 p-4 overflow-y-auto">
+            <ul class="menu w-full p-0 space-y-2">
+                <li>
+                    <a class="nav-item active" data-route="dashboard">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+                        Dashboard
+                    </a>
+                </li>
+                <li>
+                    <a class="nav-item" data-route="instructions">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        How to Use
+                    </a>
+                </li>
+                <li>
+                    <a class="nav-item" data-route="templates">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                        Templates
+                    </a>
+                </li>
+                <li>
+                    <a class="nav-item" data-route="campaigns">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                        Campaigns
+                    </a>
+                </li>
+                <li>
+                    <a class="nav-item" data-route="billing">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+                        Billing & Plan
+                    </a>
+                </li>
+                <li>
+                    <a class="nav-item" data-route="settings">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        Settings
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        <div class="p-4 border-t border-white/5 text-center bg-base-200">
+            <div class="text-xs text-gray-500 mb-2 truncate px-2" id="client-email-display">client@example.com</div>
+            <button id="btn-logout" class="btn btn-outline btn-sm w-full border-white/10 hover:bg-white/10 text-gray-400">Sign Out</button>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex flex-col h-full relative z-10 overflow-hidden bg-base-300">
+        <!-- Topbar -->
+        <header class="h-16 border-b border-white/5 flex justify-between items-center px-8 bg-base-200 shadow-sm">
+            <h2 id="topbar-title" class="text-xl font-bold">Dashboard</h2>
+            
+            <div class="flex items-center gap-4">
+                <div class="dropdown dropdown-end">
+                    <div tabindex="0" role="button" id="notification-bell" class="btn btn-ghost btn-circle relative">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                        <span id="notification-badge" class="badge badge-error badge-sm absolute top-0 right-0 hidden">0</span>
+                    </div>
+                    <ul tabindex="0" class="dropdown-content z-[50] menu p-2 shadow-2xl shadow-black/50 bg-base-200 border border-white/5 rounded-box w-80 mt-4">
+                        <li class="menu-title text-base-content border-b border-white/5 pb-2 mb-2">Announcements</li>
+                        <div id="notification-list" class="max-h-64 overflow-y-auto w-full p-1 space-y-1"></div>
+                    </ul>
+                </div>
+            </div>
+        </header>
+
+        <!-- Impersonation Banner (Hidden by Default) -->
+        <div id="impersonation-banner" class="bg-accent/20 border-b border-accent/50 p-3 flex justify-between items-center px-8 hidden">
+            <div class="flex items-center gap-3">
+                <svg class="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                <span class="text-sm font-medium text-accent">You are currently impersonating a user. Actions taken here will affect their account.</span>
+            </div>
+            <button onclick="endImpersonation()" class="btn btn-sm btn-accent text-white">Return to Admin</button>
+        </div>
+
+        <!-- Pages Area -->
+        <main class="flex-1 overflow-y-auto p-8 relative">
+            
+            <!-- Dashboard Page -->
+            <section id="page-dashboard" class="page-section active max-w-7xl mx-auto">
+                <div class="flex justify-between items-center mb-8">
+                    <div>
+                        <h1 class="text-3xl font-bold mb-2">Welcome back! 👋</h1>
+                        <p class="text-gray-400">Here's what's happening with your outreach today.</p>
+                    </div>
+                    <div class="badge badge-success gap-2 py-4 px-4 bg-green-500/10 text-green-400 border border-green-500/30">
+                        <span class="relative flex h-3 w-3">
+                          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                          <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                        </span>
+                        <div class="flex flex-col text-left">
+                            <span class="font-bold leading-none mb-1">Engine Active</span>
+                            <span class="text-[10px] leading-none uppercase tracking-widest opacity-80">Running 24/7</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div class="stat bg-base-200 border border-white/5 rounded-2xl shadow-lg">
+                        <div class="stat-title text-gray-400 font-semibold uppercase tracking-wider text-xs">Emails Sent Today</div>
+                        <div class="stat-value text-primary mt-1" id="dash-emails-sent">0</div>
+                        <div class="stat-desc mt-1">Daily Limit: <span id="dash-emails-limit">0</span></div>
+                        <progress id="dash-meter" class="progress progress-primary w-full mt-4" value="0" max="100"></progress>
+                    </div>
+                    <div class="stat bg-base-200 border border-white/5 rounded-2xl shadow-lg">
+                        <div class="stat-title text-gray-400 font-semibold uppercase tracking-wider text-xs">Active Templates</div>
+                        <div class="stat-value text-secondary mt-1" id="dash-templates">0</div>
+                        <div class="stat-desc mt-1 text-success">↗︎ Connected to AI</div>
+                    </div>
+                    <div class="stat bg-base-200 border border-white/5 rounded-2xl shadow-lg">
+                        <div class="stat-title text-gray-400 font-semibold uppercase tracking-wider text-xs">Total Sent All Time</div>
+                        <div class="stat-value mt-1" id="dash-total">0</div>
+                        <div class="stat-desc mt-1">Across all campaigns</div>
+                    </div>
+                    <div class="stat bg-base-200 border border-error/20 rounded-2xl shadow-lg">
+                        <div class="stat-title text-gray-400 font-semibold uppercase tracking-wider text-xs">Failed Emails</div>
+                        <div class="stat-value text-error mt-1" id="dash-failed">0</div>
+                        <div class="stat-desc mt-1 text-error/80">Requires attention</div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="lg:col-span-2 card bg-base-200 border border-white/5 shadow-lg">
+                        <div class="card-body p-6">
+                            <h3 class="card-title text-lg mb-4">Outreach Volume (Last 7 Days)</h3>
+                            <div class="relative h-64 w-full">
+                                <canvas id="email-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card bg-base-200 border border-white/5 shadow-lg">
+                        <div class="card-body p-6 flex flex-col h-[340px]">
+                            <h3 class="card-title text-lg mb-4">Recent Activity</h3>
+                            <div id="recent-activity-list" class="flex-1 overflow-y-auto space-y-4 pr-2">
+                                <div class="text-center text-gray-500 mt-10">No recent activity</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Instructions Page -->
+            <section id="page-instructions" class="page-section max-w-4xl mx-auto">
+                <div class="mb-8">
+                    <h2 class="text-3xl font-bold mb-2">How to Use Sheetx.io</h2>
+                    <p class="text-gray-400">Everything you need to know to automate your email outreach.</p>
+                </div>
+                
+                <div class="space-y-6">
+                    <!-- Step 1 -->
+                    <div class="card bg-base-200 border border-white/5 shadow-lg">
+                        <div class="card-body p-6">
+                            <h3 class="text-xl font-bold flex items-center gap-3"><span class="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white text-sm">1</span> Connect Your Google Account</h3>
+                            <p class="text-gray-400 mt-2">To send emails on your behalf, we need permission to connect to your Gmail account. We only request the minimum permissions required to send emails and read the Google Sheets you explicitly share with us.</p>
+                            <ul class="list-disc list-inside text-sm text-gray-300 mt-4 space-y-2">
+                                <li>Go to the <a href="#settings" class="text-primary hover:underline" onclick="document.querySelector('[data-route=settings]').click(); return false;">Settings</a> tab.</li>
+                                <li>Click the <b>"Connect Google Workspace"</b> button.</li>
+                                <li>Grant the required permissions. Make sure to check the box to allow sending emails!</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="card bg-base-200 border border-white/5 shadow-lg">
+                        <div class="card-body p-6">
+                            <h3 class="text-xl font-bold flex items-center gap-3"><span class="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white text-sm">2</span> Create a Template</h3>
+                            <p class="text-gray-400 mt-2">Define the core message you want to send. Our AI will automatically personalize it for each lead based on their data.</p>
+                            <ul class="list-disc list-inside text-sm text-gray-300 mt-4 space-y-2">
+                                <li>Go to the <a href="#templates" class="text-primary hover:underline" onclick="document.querySelector('[data-route=templates]').click(); return false;">Templates</a> tab.</li>
+                                <li>Click <b>"+ Create Template"</b>.</li>
+                                <li>Write your subject line and email body. You can use variables like <code>{{Name}}</code> or <code>{{Company}}</code> if your sheet has those columns.</li>
+                                <li>Save the template.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div class="card bg-base-200 border border-white/5 shadow-lg">
+                        <div class="card-body p-6">
+                            <h3 class="text-xl font-bold flex items-center gap-3"><span class="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white text-sm">3</span> Launch a Campaign</h3>
+                            <p class="text-gray-400 mt-2">Link a Google Sheet containing your leads to a Template, and start sending.</p>
+                            <ul class="list-disc list-inside text-sm text-gray-300 mt-4 space-y-2">
+                                <li>Go to the <a href="#campaigns" class="text-primary hover:underline" onclick="document.querySelector('[data-route=campaigns]').click(); return false;">Campaigns</a> tab and click <b>"+ New Campaign"</b>.</li>
+                                <li>Select the Template you created.</li>
+                                <li>Paste the <b>URL of your Google Sheet</b> containing the leads. <br><span class="text-xs text-yellow-500 italic mt-1 inline-block">Note: The sheet must be "Anyone with the link can view" or explicitly shared with your connected Google account.</span></li>
+                                <li>Map the columns (e.g. tell the system which column has the Email address).</li>
+                                <li>Click <b>Start Campaign</b>. The engine will process rows sequentially.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Templates Page -->
+            <section id="page-templates" class="page-section max-w-7xl mx-auto">
+                <div class="flex justify-between items-center mb-8">
+                    <h2 class="text-3xl font-bold">Email Templates</h2>
+                    <button class="btn bg-white hover:bg-gray-200 text-dark border-none" id="btn-new-template">+ Create Template</button>
+                </div>
+                <div class="card bg-base-200 border border-white/5 shadow-lg overflow-x-auto">
+                    <table class="table table-zebra w-full text-left">
+                        <thead class="text-gray-400 text-sm uppercase tracking-wider border-b border-white/10">
+                            <tr><th class="p-4 font-semibold">Project Name</th><th class="p-4 font-semibold">Subject</th><th class="p-4 font-semibold">Status</th><th class="p-4 font-semibold text-right">Actions</th></tr>
+                        </thead>
+                        <tbody id="template-list" class="border-t border-white/5">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Campaigns Page -->
+            <section id="page-campaigns" class="page-section max-w-7xl mx-auto">
+                <div class="flex justify-between items-center mb-8">
+                    <div>
+                        <h2 class="text-3xl font-bold">Campaigns</h2>
+                        <p class="text-gray-400">Manage multiple Google Sheets and automated follow-ups.</p>
+                    </div>
+                    <button class="btn btn-primary text-white" id="btn-new-campaign">+ New Campaign</button>
+                </div>
+                <div class="card bg-base-200 border border-white/5 shadow-lg overflow-x-auto">
+                    <table class="table table-zebra w-full text-left">
+                        <thead class="text-gray-400 text-sm uppercase tracking-wider border-b border-white/10">
+                            <tr>
+                                <th class="p-4 font-semibold">Name</th>
+                                <th class="p-4 font-semibold">Google Sheet ID</th>
+                                <th class="p-4 font-semibold">Follow-Up Rules</th>
+                                <th class="p-4 font-semibold text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="campaign-list" class="border-t border-white/5">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Review Queue Page -->
+            <section id="page-queue" class="page-section max-w-7xl mx-auto">
+                <div class="flex justify-between items-center mb-8">
+                    <div>
+                        <h2 class="text-3xl font-bold">Review Queue</h2>
+                        <p class="text-gray-400">Approve or reject pending emails before they are sent.</p>
+                    </div>
+                    <button class="btn btn-outline" onclick="loadQueue()"><svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>Refresh</button>
+                </div>
+                <div class="card bg-base-200 border border-white/5 shadow-lg overflow-x-auto">
+                    <table class="table table-zebra w-full text-left">
+                        <thead class="text-gray-400 text-sm uppercase tracking-wider border-b border-white/10">
+                            <tr>
+                                <th class="p-4 font-semibold">Recipient</th>
+                                <th class="p-4 font-semibold">Campaign</th>
+                                <th class="p-4 font-semibold">Template</th>
+                                <th class="p-4 font-semibold text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="queue-list" class="border-t border-white/5">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Unified Inbox Page -->
+            <section id="page-inbox" class="page-section max-w-7xl mx-auto">
+                <div class="flex justify-between items-center mb-8">
+                    <div>
+                        <h2 class="text-3xl font-bold">Unified Inbox</h2>
+                        <p class="text-gray-400">View recent replies to your sent campaigns.</p>
+                    </div>
+                    <button class="btn btn-outline" onclick="loadInbox()"><svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>Refresh</button>
+                </div>
+                <div class="card bg-base-200 border border-white/5 shadow-lg overflow-x-auto">
+                    <table class="table table-zebra w-full text-left">
+                        <thead class="text-gray-400 text-sm uppercase tracking-wider border-b border-white/10">
+                            <tr>
+                                <th class="p-4 font-semibold">From</th>
+                                <th class="p-4 font-semibold">Subject</th>
+                                <th class="p-4 font-semibold">Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inbox-list" class="border-t border-white/5">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Billing Page -->
+            <section id="page-billing" class="page-section max-w-7xl mx-auto">
+                <h2 class="text-3xl font-bold mb-8">Billing & Plan</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+                    <div class="stat bg-base-200 border border-white/5 rounded-2xl shadow-lg">
+                        <div class="stat-title text-gray-400 font-semibold uppercase tracking-wider text-xs">Current Plan</div>
+                        <div class="stat-value text-primary mt-1 mb-2" id="billing-current-plan">Free Plan</div>
+                        <div class="stat-desc text-sm">Daily limit: <span id="billing-current-limit" class="text-white font-bold">0 / day</span></div>
+                    </div>
+                </div>
+                <div class="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-4">
+                    <h3 class="text-xl font-bold">Available Upgrades</h3>
+                    <!-- Billing Toggle -->
+                    <div class="bg-base-300 p-1 rounded-full inline-flex border border-white/10" id="billing-toggle">
+                        <button class="px-6 py-2 rounded-full text-sm font-semibold transition-all bg-primary text-white" data-cycle="monthly">Monthly</button>
+                        <button class="px-6 py-2 rounded-full text-sm font-semibold transition-all text-gray-400 hover:text-white" data-cycle="half_yearly">6-Monthly <span class="text-xs text-green-400 ml-1">15% off</span></button>
+                        <button class="px-6 py-2 rounded-full text-sm font-semibold transition-all text-gray-400 hover:text-white" data-cycle="yearly">Yearly <span class="text-xs text-green-400 ml-1">25% off</span></button>
+                    </div>
+                </div>
+                <div class="mb-8 flex justify-end">
+                    <div class="join">
+                        <input class="input input-bordered join-item w-48 bg-base-300 border-white/10" id="promo-code-input" placeholder="Promo code"/>
+                        <button class="btn btn-outline join-item border-white/10 text-white hover:bg-white hover:text-black" onclick="applyPromoCode()">Apply</button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6" id="billing-plan-list">
+                    <!-- Populated by JS -->
+                </div>
+            </section>
+
+            <!-- Settings Page -->
+            <section id="page-settings" class="page-section max-w-7xl mx-auto">
+                <h2 class="text-3xl font-bold mb-8">Account Settings</h2>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- Profile & SMTP -->
+                    <div class="card bg-base-200 border border-white/5 shadow-lg">
+                        <div class="card-body p-8">
+                            <h3 class="card-title text-xl mb-2">Profile Setup</h3>
+                            <p class="text-sm text-gray-400 mb-6 flex items-center gap-2">
+                                <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                Emails are securely sent using your connected Google Workspace account.
+                            </p>
+                            <form id="form-profile" class="space-y-4">
+                                <div class="form-control">
+                                    <label class="label"><span class="label-text text-gray-400 font-medium">Company / Sender Name</span></label>
+                                    <input type="text" id="set-company" class="input input-bordered bg-base-300 border-white/10 focus:border-primary" placeholder="e.g. John Doe Realty">
+                                </div>
+                                <div class="form-control mt-6">
+                                    <button type="submit" class="btn btn-primary text-white">Save Configuration</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="card bg-base-200 border border-white/5 shadow-lg h-fit">
+                        <div class="card-body p-8">
+                            <h3 class="card-title text-xl mb-6">Service Account Setup</h3>
+                            <p class="text-gray-400 text-sm mb-4">Share all your Campaign Google Sheets with this Service Account email so our system can read them:</p>
+                            <div class="bg-base-300 border border-white/10 p-3 rounded-lg font-mono text-sm text-secondary mb-6 break-all shadow-inner" id="service-account-email">
+                                Not configured by admin
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modals (DaisyUI Dialogs) -->
+
+    <!-- Template Editor Modal -->
+    <dialog id="template-editor-modal" class="modal">
+        <div class="modal-box w-11/12 max-w-5xl bg-base-100 border border-white/10 p-0 overflow-hidden flex flex-col h-[90vh]">
+            <form method="dialog">
+                <button class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4 z-10 text-gray-400 hover:text-white">✕</button>
+            </form>
+            <div class="p-6 border-b border-white/5 bg-base-200 shrink-0">
+                <h3 class="font-bold text-2xl">Edit Template</h3>
+            </div>
+            
+            <div class="flex-1 flex flex-col lg:flex-row overflow-hidden bg-base-300">
+                <!-- Editor Side -->
+                <div class="flex-1 flex flex-col p-6 overflow-y-auto border-r border-white/5">
+                    <input type="hidden" id="tmpl-id">
+                    <div class="form-control mb-4">
+                        <label class="label"><span class="label-text text-gray-400 font-medium">Project Name / Category</span></label>
+                        <input type="text" id="tmpl-project" class="input input-bordered bg-base-200 border-white/10 focus:border-primary w-full" placeholder="e.g. Kondapur Apartments">
+                    </div>
+                    <div class="form-control mb-4">
+                        <label class="label"><span class="label-text text-gray-400 font-medium">Subject Line</span></label>
+                        <input type="text" id="tmpl-subject" class="input input-bordered bg-base-200 border-white/10 focus:border-primary w-full" placeholder="Exclusive offer for {first_name}...">
+                    </div>
+                    <div class="form-control mb-4">
+                        <label class="label"><span class="label-text text-gray-400 font-medium">Banner Image (Optional)</span></label>
+                        <input type="file" id="tmpl-banner" accept="image/*" class="file-input file-input-bordered file-input-primary bg-base-200 border-white/10 w-full text-sm">
+                        <input type="hidden" id="tmpl-banner-url">
+                        <div id="tmpl-banner-preview" class="mt-3 hidden">
+                            <img src="" class="h-20 rounded border border-white/10 object-cover">
+                        </div>
+                    </div>
+                    <div class="form-control flex-1 flex flex-col min-h-[250px] mb-4">
+                        <label class="label"><span class="label-text text-gray-400 font-medium">HTML Body</span></label>
+                        <textarea id="tmpl-body" class="textarea textarea-bordered bg-base-200 border-white/10 focus:border-primary font-mono w-full flex-1" placeholder="<p>Hi {first_name},</p>"></textarea>
+                    </div>
+                    <button class="btn btn-primary text-white w-full" id="btn-save-template">Save Template</button>
+                </div>
+                
+                <!-- Preview Side -->
+                <div class="flex-1 flex flex-col bg-white">
+                    <div class="bg-gray-100 px-4 py-3 text-xs font-bold text-gray-500 border-b flex items-center shrink-0">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                        LIVE PREVIEW
+                    </div>
+                    <iframe id="tmpl-preview" class="w-full flex-1 border-0 bg-white"></iframe>
+                </div>
+            </div>
+        </div>
+        <form method="dialog" class="modal-backdrop">
+            <button>close</button>
+        </form>
+    </dialog>
+
+    <!-- Modal: New Campaign -->
+    <dialog id="modal-campaign" class="modal">
+        <div class="modal-box bg-base-200 border border-white/10 max-w-md">
+            <h3 class="font-bold text-xl mb-6">Create New Campaign</h3>
+            <form id="form-campaign" class="space-y-4">
+                <div class="form-control">
+                    <label class="label"><span class="label-text font-medium text-gray-300">Campaign Name</span></label>
+                    <input type="text" id="camp-name" class="input input-bordered bg-base-300 border-white/5" placeholder="e.g. Q3 Outreach" required>
+                </div>
+                <div class="form-control">
+                    <label class="label"><span class="label-text font-medium text-gray-300">Google Sheet URL</span></label>
+                    <input type="text" id="camp-sheet" class="input input-bordered bg-base-300 border-white/5" placeholder="https://docs.google.com/..." required>
+                </div>
+                
+                <div class="divider border-white/5 my-2">Follow-ups</div>
+                <div class="form-control">
+                    <label class="label"><span class="label-text font-medium text-gray-300">Follow-up Days</span></label>
+                    <input type="number" id="camp-followup-days" class="input input-bordered bg-base-300 border-white/5" placeholder="0" min="0" value="0">
+                    <label class="label"><span class="label-text-alt text-gray-500">Set to 0 to disable automatic follow-ups.</span></label>
+                </div>
+                <div class="form-control">
+                    <label class="label"><span class="label-text font-medium text-gray-300">Follow-up Template</span></label>
+                    <select id="camp-followup-template" class="select select-bordered bg-base-300 border-white/5 w-full">
+                        <option value="">-- None --</option>
+                    </select>
+                </div>
+                
+                <div class="divider border-white/5 my-2">Review Mode</div>
+                <div class="form-control">
+                    <label class="label cursor-pointer justify-start gap-4">
+                        <input type="checkbox" id="camp-review-mode" class="toggle toggle-primary">
+                        <div>
+                            <span class="label-text font-medium text-gray-300 block">Review Before Send</span>
+                            <span class="label-text-alt text-gray-500">Queue emails for manual approval before sending.</span>
+                        </div>
+                    </label>
+                </div>
+                
+                <div class="divider border-white/5 my-2">Throttle Settings</div>
+                <div class="form-control">
+                    <label class="label"><span class="label-text font-medium text-gray-300">Max Emails / Hour</span></label>
+                    <input type="number" id="camp-throttle-rate" class="input input-bordered bg-base-300 border-white/5" value="50" min="1">
+                    <label class="label"><span class="label-text-alt text-gray-500">Keep low to avoid spam filters.</span></label>
+                </div>
+                <div class="flex gap-4">
+                    <div class="form-control flex-1">
+                        <label class="label"><span class="label-text font-medium text-gray-300">Start Time (24h)</span></label>
+                        <input type="number" id="camp-throttle-start" class="input input-bordered bg-base-300 border-white/5" value="9" min="0" max="23">
+                    </div>
+                    <div class="form-control flex-1">
+                        <label class="label"><span class="label-text font-medium text-gray-300">End Time (24h)</span></label>
+                        <input type="number" id="camp-throttle-end" class="input input-bordered bg-base-300 border-white/5" value="17" min="0" max="23">
+                    </div>
+                </div>
+
+                <div class="modal-action mt-6">
+                    <button type="button" class="btn btn-ghost text-gray-400 hover:bg-white/5" onclick="document.getElementById('modal-campaign').close()">Cancel</button>
+                    <button type="submit" class="btn btn-primary text-white">Save Campaign</button>
+                </div>
+            </form>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast toast-end z-[100]"></div>
+    
+    <!-- Global Loader -->
+    <div id="global-loader" class="fixed inset-0 bg-base-300/80 backdrop-blur-sm z-[100] flex flex-col items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <span class="loading loading-spinner loading-lg text-primary"></span>
+        <p class="mt-4 text-gray-400 font-medium tracking-wide">Loading data...</p>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script>
+        // Custom Toast using DaisyUI
+        window.showToast = (msg, type='info') => {
+            const container = document.getElementById('toast-container');
+            const alert = document.createElement('div');
+            const alertClass = type === 'error' ? 'alert-error' : type === 'success' ? 'alert-success' : 'alert-info bg-primary text-white border-none';
+            alert.className = `alert ${alertClass} shadow-lg`;
+            alert.innerHTML = `<span>${msg}</span>`;
+            container.appendChild(alert);
+            setTimeout(() => {
+                alert.classList.add('opacity-0', 'transition-opacity', 'duration-300');
+                setTimeout(() => alert.remove(), 300);
+            }, 3000);
+        };
+        
+        window.components = { showToast, formatDate: (dateStr) => new Date(dateStr).toLocaleString() };
+    </script>
+    <!-- Razorpay SDK — REQUIRED for payment modal -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <!-- Append a version to bypass cache -->
+    <script src="/js/client-app.js?v=8"></script>
+</body>
+</html>
