@@ -5,7 +5,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const loginScreen = document.getElementById('admin-login-screen');
 
     auth.getCurrentUser().then(user => {
-        if (!user || user.role !== 'admin') {
+        const globalLoader = document.getElementById('admin-global-loader');
+        if (globalLoader) {
+            globalLoader.style.opacity = '0';
+            setTimeout(() => globalLoader.style.display = 'none', 300);
+        }
+
+        if (!user || (user.role !== 'admin' && user.role !== 'sub_admin')) {
             if (user && user.role !== 'admin') {
                 window.location.href = '/client/';
                 return;
@@ -51,6 +57,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const navEl = document.querySelector(`.nav-item[data-route="${path}"]`);
             if (navEl) navEl.classList.add('active');
             
+            // Close drawer on mobile
+            const drawerToggle = document.getElementById('portal-drawer');
+            if (drawerToggle) drawerToggle.checked = false;
+            
             if (this.routes[path]) await this.routes[path]();
         },
         init() {
@@ -74,14 +84,29 @@ document.addEventListener('DOMContentLoaded', () => {
     let adminChart = null;
 
     function initAdmin() {
+    // Role-Based UI adjustments
+    auth.getCurrentUser().then(user => {
+        if (user && user.role === 'sub_admin') {
+            document.querySelectorAll('.super-admin-only').forEach(el => el.style.display = 'none');
+            // If they try to load dashboard or default, ensure it works.
+            if (['plans', 'promo', 'subadmins', 'settings', 'landing', 'policies'].includes(window.location.hash.substring(1))) {
+                window.location.hash = 'dashboard';
+            }
+        }
+    });
+
         router.on('dashboard', loadDashboard);
         router.on('users', loadUsers);
+        router.on('appointments', loadAppointments);
         router.on('plans', loadPlans);
         router.on('promo', loadPromoCodes);
         router.on('monitor', loadGlobalLogs);
+        router.on('whatsapp', loadWhatsapp);
         router.on('settings', loadSettings);
         router.on('landing', loadLandingContent);
         router.on('policies', loadPolicies);
+        router.on('newsletter', loadNewsletter);
+        router.on('subadmins', renderSubAdmins);
         router.init();
     }
 
@@ -121,8 +146,8 @@ document.addEventListener('DOMContentLoaded', () => {
             feedbackList.innerHTML = '';
             
             if(!demos || demos.length === 0) {
-                list.innerHTML = '<div class="p-4 text-center text-gray-500">No demo requests yet.</div>';
-                feedbackList.innerHTML = '<div class="p-4 text-center text-gray-500">No feedback yet.</div>';
+                list.innerHTML = '<div class="p-4 text-center text-gray-400">No demo requests yet.</div>';
+                feedbackList.innerHTML = '<div class="p-4 text-center text-gray-400">No feedback yet.</div>';
                 return;
             }
             
@@ -138,11 +163,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="flex justify-between items-start mb-2">
                         <strong class="text-white">${d.name} <span class="text-gray-400 text-sm font-normal">(${d.company || 'N/A'})</span></strong>
                         <div class="flex flex-col items-end">
-                            <span class="text-xs text-gray-500 mb-1">${new Date(d.created_at).toLocaleDateString()}</span>
+                            <span class="text-xs text-gray-400 mb-1">${new Date(d.created_at).toLocaleDateString()}</span>
                             <button class="btn btn-xs btn-primary btn-outline" onclick="openAdminEmailModal('${d.email}', true)">Email</button>
                         </div>
                     </div>
-                    <div class="text-sm text-secondary mb-1">${d.email} <span class="text-gray-500 ml-2">${d.phone || ''}</span></div>
+                    <div class="text-sm text-secondary mb-1">${d.email} <span class="text-gray-400 ml-2">${d.phone || ''}</span></div>
                     <div class="mb-2">
                         <span class="badge badge-sm badge-outline text-gray-300">${d.inquiry_type || 'Demo'}</span>
                         <span class="badge badge-sm ${d.status === 'contacted' ? 'badge-success' : 'badge-warning'} ml-2">${d.status}</span>
@@ -159,8 +184,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
             
-            if (demoCount === 0) list.innerHTML = '<div class="p-4 text-center text-gray-500">No demo requests yet.</div>';
-            if (feedbackCount === 0) feedbackList.innerHTML = '<div class="p-4 text-center text-gray-500">No feedback yet.</div>';
+            if (demoCount === 0) list.innerHTML = '<div class="p-4 text-center text-gray-400">No demo requests yet.</div>';
+            if (feedbackCount === 0) feedbackList.innerHTML = '<div class="p-4 text-center text-gray-400">No feedback yet.</div>';
         } catch(e) {
             console.log("Demo requests error:", e);
         }
@@ -226,12 +251,28 @@ document.addEventListener('DOMContentLoaded', () => {
                     ? `<button class="text-accent hover:text-white font-semibold text-sm mr-2" onclick="toggleDemoStatus('${c.id}', false)">Make Active</button>`
                     : `<button class="text-accent hover:text-white font-semibold text-sm mr-2" onclick="toggleDemoStatus('${c.id}', true)">Make Demo</button>`;
                 
+                let planHtml = `<span class="bg-primary/20 text-primary px-2 py-1 rounded-full text-xs">${c.plan || 'Free'}</span>`;
+                
+                if (c.trial_ends_at) {
+                    const trialEnd = new Date(c.trial_ends_at);
+                    const now = new Date();
+                    if (trialEnd > now) {
+                        const diffMs = trialEnd - now;
+                        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                        const diffHrs = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                        planHtml += `<br><span class="text-blue-400 text-xs mt-1 inline-block">Trial: ${diffDays}d ${diffHrs}h left</span>`;
+                    } else {
+                        planHtml += `<br><span class="text-error text-xs mt-1 inline-block">Trial Expired</span>`;
+                    }
+                }
+                
                 tr.innerHTML = `
                     <td class="p-4"><input type="checkbox" class="cb-${typeStr} checkbox checkbox-sm checkbox-primary" value="${c.email}" onchange="updateBulkEmailButton('${typeStr}')" /></td>
                     <td class="p-4 text-white font-medium">${c.email}</td>
                     <td class="p-4 text-gray-300">${c.company_name || 'N/A'}</td>
-                    <td class="p-4 text-gray-300"><span class="bg-primary/20 text-primary px-2 py-1 rounded-full text-xs">${c.plan || 'Free'}</span></td>
+                    <td class="p-4 text-gray-300">${planHtml}</td>
                     <td class="p-4 text-right">
+                        <button onclick="openChangePlanModal('${c.id}')" class="text-xs bg-primary/20 hover:bg-primary/40 text-primary py-1 px-3 rounded transition-colors mr-2">Plan</button>
                         <button onclick="resetUsage('${c.id}')" class="text-xs bg-dark/50 hover:bg-white/10 text-gray-300 py-1 px-3 rounded transition-colors mr-2">Reset</button>
                         <button class="text-secondary hover:text-pink-400 font-semibold text-sm mr-2" onclick="viewClientDetails('${c.id}')">Details</button>
                         ${demoAction}
@@ -241,10 +282,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 tbody.appendChild(tr);
             };
 
-            if(activeClients.length === 0) tbodyActive.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">No active clients.</td></tr>';
+            if(activeClients.length === 0) tbodyActive.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-400">No active clients.</td></tr>';
             else activeClients.forEach(c => renderRow(c, tbodyActive, false));
 
-            if(demoClients.length === 0) tbodyDemo.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">No demo users.</td></tr>';
+            if(demoClients.length === 0) tbodyDemo.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-400">No demo users.</td></tr>';
             else demoClients.forEach(c => renderRow(c, tbodyDemo, true));
 
         } catch(e) {
@@ -314,7 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="col-span-2 mt-4">
                         <div class="text-gray-400 mb-2">Daily Utilization</div>
                         <progress class="progress ${client.emails_sent_today >= client.daily_email_limit ? 'progress-error' : 'progress-primary'} w-full" value="${client.emails_sent_today}" max="${client.daily_email_limit}"></progress>
-                        <div class="text-xs text-right mt-1 text-gray-500">${Math.round((client.emails_sent_today / client.daily_email_limit) * 100) || 0}% used</div>
+                        <div class="text-xs text-right mt-1 text-gray-400">${Math.round((client.emails_sent_today / client.daily_email_limit) * 100) || 0}% used</div>
                     </div>
                 </div>
             `;
@@ -355,12 +396,78 @@ document.addEventListener('DOMContentLoaded', () => {
             await api.put(`/admin/clients/${id}/features`, features);
             if(window.showToast) showToast("Client features updated", "success");
             document.getElementById('client-features-modal')?.close();
-        } catch(err) {
-            if(window.showToast) showToast(err.message, "error");
+            } catch(e) {
+                if(window.showToast) showToast(e.message, 'error');
+            }
+        });
+
+    // --- WhatsApp Settings (Admin) ---
+    async function loadWhatsapp() {
+        try {
+            const settings = await api.get('/admin/settings');
+            settings.forEach(s => {
+                if (s.key === 'WHATSAPP_ACCESS_TOKEN' && document.getElementById('admin-wa-token')) document.getElementById('admin-wa-token').value = s.value;
+                if (s.key === 'WHATSAPP_PHONE_NUMBER_ID' && document.getElementById('admin-wa-phone-id')) document.getElementById('admin-wa-phone-id').value = s.value;
+                if (s.key === 'WHATSAPP_BUSINESS_ACCOUNT_ID' && document.getElementById('admin-wa-business-id')) document.getElementById('admin-wa-business-id').value = s.value;
+            });
+            fetchAdminWhatsappTemplates();
+        } catch(e) {}
+    }
+
+    async function fetchAdminWhatsappTemplates() {
+        try {
+            const btn = document.getElementById('btn-admin-refresh-templates');
+            const select = document.getElementById('admin-wa-template');
+            const notifSelect = document.getElementById('notif-whatsapp-template');
+            if (btn) btn.innerHTML = '<span class="loading loading-spinner loading-xs"></span> Fetching...';
+            
+            const response = await api.get('/admin/whatsapp/templates');
+            // The response itself is the json payload containing {data: [...]}
+            const templates = response.data || [];
+            
+            let optionsHtml = '';
+            if (templates.length === 0) {
+                optionsHtml = '<option value="">No templates found in Meta</option>';
+            } else {
+                templates.forEach(t => {
+                    if (t.status === 'APPROVED') {
+                        optionsHtml += `<option value="${t.name}">${t.name} (${t.language})</option>`;
+                    }
+                });
+            }
+            if (select) select.innerHTML = optionsHtml || '<option value="">No approved templates</option>';
+            if (notifSelect) notifSelect.innerHTML = optionsHtml || '<option value="">No approved templates</option>';
+            
+        } catch(e) {
+            console.error(e);
+            if(window.showToast) showToast('Failed to fetch templates: ' + e.message, 'error');
+        } finally {
+            const btn = document.getElementById('btn-admin-refresh-templates');
+            if(btn) btn.textContent = 'Fetch / Refresh Templates';
+        }
+    }
+
+    document.getElementById('btn-admin-refresh-templates')?.addEventListener('click', fetchAdminWhatsappTemplates);
+
+    document.getElementById('form-admin-whatsapp')?.addEventListener('submit', async(e) => {
+        e.preventDefault();
+        const payload = [];
+        const tokenEl = document.getElementById('admin-wa-token');
+        const phoneEl = document.getElementById('admin-wa-phone-id');
+        const bizEl = document.getElementById('admin-wa-business-id');
+        
+        if (tokenEl) payload.push({key: 'WHATSAPP_ACCESS_TOKEN', value: tokenEl.value});
+        if (phoneEl) payload.push({key: 'WHATSAPP_PHONE_NUMBER_ID', value: phoneEl.value});
+        if (bizEl) payload.push({key: 'WHATSAPP_BUSINESS_ACCOUNT_ID', value: bizEl.value});
+
+        try {
+            await api.post('/admin/settings', payload);
+            if(window.showToast) showToast('WhatsApp settings saved!', 'success');
+            fetchAdminWhatsappTemplates();
+        } catch(e) {
+            if(window.showToast) showToast(e.message, 'error');
         }
     });
-
-
 
     // --- Global Monitor ---
     window.loadGlobalLogs = async () => {
@@ -371,7 +478,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tbody.innerHTML = '';
 
             if(!logs || logs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">No emails sent yet.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-400">No emails sent yet.</td></tr>';
                 return;
             }
 
@@ -407,7 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
             container.innerHTML = '';
             
             if(!plans || plans.length === 0) {
-                container.innerHTML = '<div class="col-span-3 text-center text-gray-500 p-8">No plans created yet. Click "Add Plan" to create one.</div>';
+                container.innerHTML = '<div class="col-span-3 text-center text-gray-400 p-8">No plans created yet. Click "Add Plan" to create one.</div>';
                 return;
             }
             
@@ -456,6 +563,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if(el('plan-price-yearly')) el('plan-price-yearly').value = plan.price_yearly || (plan.price_monthly * 12);
             if(el('plan-limit')) el('plan-limit').value = plan.email_limit_daily;
             if(el('plan-campaign-limit')) el('plan-campaign-limit').value = plan.campaign_limit || 3;
+            if(el('plan-has-ai')) el('plan-has-ai').checked = plan.has_ai_templates || false;
+            if(el('plan-ai-limit')) el('plan-ai-limit').value = (plan.ai_limit !== undefined && plan.ai_limit !== null) ? plan.ai_limit : -1;
             if(el('plan-features')) {
                 let feats = [];
                 try { feats = JSON.parse(plan.features_json); } catch(e){}
@@ -480,6 +589,8 @@ document.addEventListener('DOMContentLoaded', () => {
             price_yearly: parseFloat(document.getElementById('plan-price-yearly').value) || 0,
             email_limit_daily: parseInt(document.getElementById('plan-limit').value),
             campaign_limit: parseInt(document.getElementById('plan-campaign-limit').value) || 3,
+            has_ai_templates: document.getElementById('plan-has-ai') ? document.getElementById('plan-has-ai').checked : false,
+            ai_limit: parseInt(document.getElementById('plan-ai-limit')?.value) || -1,
             features_json: JSON.stringify(featuresArray)
         };
         try {
@@ -569,7 +680,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 if(s.key === 'LANDING_FAQ') document.getElementById('landing-faq').value = s.value;
                 if(s.key === 'LANDING_FOOTER') document.getElementById('landing-footer').value = s.value;
                 if(s.key === 'LANDING_REVIEWS') document.getElementById('landing-reviews').value = s.value;
+                if(s.key === 'LANDING_FEATURES') document.getElementById('landing-features').value = s.value;
                 
+                if(s.key === 'LANDING_HERO_BADGE' && document.getElementById('set-hero-badge')) document.getElementById('set-hero-badge').value = s.value;
+                if(s.key === 'LANDING_HERO_TITLE' && document.getElementById('set-hero-title')) document.getElementById('set-hero-title').value = s.value;
+                if(s.key === 'LANDING_HERO_SUBTITLE' && document.getElementById('set-hero-subtitle')) document.getElementById('set-hero-subtitle').value = s.value;
+                if(s.key === 'LANDING_HERO_CTA' && document.getElementById('set-hero-cta')) document.getElementById('set-hero-cta').value = s.value;
+
+                if(s.key === 'LANDING_FEATURES_TITLE' && document.getElementById('set-features-title')) document.getElementById('set-features-title').value = s.value;
+                if(s.key === 'LANDING_FEATURES_SUBTITLE' && document.getElementById('set-features-subtitle')) document.getElementById('set-features-subtitle').value = s.value;
+
                 if(s.key === 'partner_title' && document.getElementById('set-partner-title')) document.getElementById('set-partner-title').value = s.value;
                 if(s.key === 'partner_subtitle' && document.getElementById('set-partner-subtitle')) document.getElementById('set-partner-subtitle').value = s.value;
                 if(s.key === 'partner_b1_title' && document.getElementById('set-partner-b1-title')) document.getElementById('set-partner-b1-title').value = s.value;
@@ -581,6 +701,14 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             
             // Populate defaults if empty to help the admin
+            if(!document.getElementById('landing-features').value) {
+                document.getElementById('landing-features').value = JSON.stringify([
+                    {title: "AI Matching", description: "Our engine analyses your lead notes and automatically selects the most relevant template.", color: "text-primary"},
+                    {title: "Google Sheets Sync", description: "Just paste your Google Sheet URL. We read rows instantly and log the status right back to it.", color: "text-secondary"},
+                    {title: "Email & WhatsApp", description: "Connect seamlessly via Gmail API & Meta Cloud API. We throttle sending speeds and handle API limits to protect your domain and number reputation automatically.", color: "text-green-400"},
+                    {title: "Native WhatsApp API", description: "Go beyond email. Trigger official Meta WhatsApp templates directly from your Sheet to guarantee 98% open rates.", color: "text-green-400"}
+                ], null, 2);
+            }
             if(!document.getElementById('landing-steps').value) {
                 document.getElementById('landing-steps').value = JSON.stringify([
                     {step_num: "01", title: "Connect your Google Sheet", description: "Paste your Google Sheet URL. We automatically read your leads instantly without complex setup."},
@@ -593,7 +721,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if(!document.getElementById('landing-faq').value) {
                 document.getElementById('landing-faq').value = JSON.stringify([
                     {question: "What is Sheetx.io?", answer: "Sheetx.io is an intelligent outreach platform that syncs with Google Sheets and uses AI to match the perfect email template to your leads."},
-                    {question: "Is there a free trial?", answer: "Yes, we offer a 14-day free trial on all paid plans so you can test our AI matching engine."},
+                    {question: "Is there a free trial?", answer: "Yes, we offer a 5-day free trial on all paid plans so you can test our AI matching engine."},
                     {question: "Do I need to import my leads?", answer: "No importing required! Just paste your Google Sheet URL, and we sync directly with your live data."},
                     {question: "Will this affect my domain reputation?", answer: "We use smart sending features like built-in delays and throttling to ensure your domain reputation stays protected while scaling."},
                     {question: "Can I bring my own email account?", answer: "Yes! You can connect your existing email accounts via SMTP to send directly from your own domain."}
@@ -614,8 +742,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 ], null, 2);
             }
             
-            // Render FAQ Builder UI
+            // Render Builder UIs
             renderFaqBuilder();
+            renderFeaturesBuilder();
+            renderStepsBuilder();
+            renderReviewsBuilder();
+            renderFooterBuilder();
         } catch(e) {}
     }
 
@@ -625,6 +757,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(!container) return;
         let faqs = [];
         try { faqs = JSON.parse(document.getElementById('landing-faq').value); } catch(e){}
+        if (!Array.isArray(faqs)) faqs = [];
         
         container.innerHTML = '';
         faqs.forEach((faq, idx) => {
@@ -647,6 +780,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addFaqRow = () => {
         let faqs = [];
         try { faqs = JSON.parse(document.getElementById('landing-faq').value || "[]"); } catch(e){}
+        if (!Array.isArray(faqs)) faqs = [];
         faqs.push({question: "", answer: ""});
         document.getElementById('landing-faq').value = JSON.stringify(faqs);
         renderFaqBuilder();
@@ -656,9 +790,246 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.closest('.faq-row').remove();
     };
 
+    // --- Features Builder Logic ---
+    function renderFeaturesBuilder() {
+        const container = document.getElementById('features-builder-container');
+        if(!container) return;
+        let features = [];
+        try { features = JSON.parse(document.getElementById('landing-features').value); } catch(e){}
+        if (!Array.isArray(features)) features = [];
+        
+        container.innerHTML = '';
+        features.forEach((feature, idx) => {
+            container.insertAdjacentHTML('beforeend', `
+                <div class="feature-row bg-base-100 p-4 rounded-xl border border-white/5 relative group">
+                    <button type="button" onclick="removeFeatureRow(this)" class="btn btn-sm btn-circle btn-ghost text-red-400 absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                    <div class="grid grid-cols-2 gap-4 mb-2 pr-8">
+                        <div class="form-control">
+                            <label class="label pt-0"><span class="label-text text-gray-400 text-xs">Title</span></label>
+                            <input type="text" class="feature-title input input-sm input-bordered bg-base-200 border-white/10" value="${String(feature.title || '').replace(/"/g, '&quot;')}">
+                        </div>
+                        <div class="form-control">
+                            <label class="label pt-0"><span class="label-text text-gray-400 text-xs">Color Class (e.g. text-primary)</span></label>
+                            <input type="text" class="feature-color input input-sm input-bordered bg-base-200 border-white/10" value="${String(feature.color || 'text-primary').replace(/"/g, '&quot;')}">
+                        </div>
+                    </div>
+                    <div class="form-control">
+                        <label class="label pt-0"><span class="label-text text-gray-400 text-xs">Description</span></label>
+                        <textarea class="feature-desc textarea textarea-sm textarea-bordered bg-base-200 border-white/10 h-16">${String(feature.description || '')}</textarea>
+                    </div>
+                </div>
+            `);
+        });
+    }
+
+    window.addFeatureRow = () => {
+        let features = [];
+        try { features = JSON.parse(document.getElementById('landing-features').value || "[]"); } catch(e){}
+        if (!Array.isArray(features)) features = [];
+        features.push({title: "", description: "", color: "text-primary"});
+        document.getElementById('landing-features').value = JSON.stringify(features);
+        renderFeaturesBuilder();
+    };
+
+    window.removeFeatureRow = (btn) => {
+        btn.closest('.feature-row').remove();
+    };
+
+    // --- Steps Builder Logic ---
+    function renderStepsBuilder() {
+        const container = document.getElementById('steps-builder-container');
+        if(!container) return;
+        let steps = [];
+        try { steps = JSON.parse(document.getElementById('landing-steps').value); } catch(e){}
+        if (!Array.isArray(steps)) steps = [];
+        
+        container.innerHTML = '';
+        steps.forEach((step, idx) => {
+            container.insertAdjacentHTML('beforeend', `
+                <div class="step-row bg-base-100 p-4 rounded-xl border border-white/5 relative group">
+                    <button type="button" onclick="removeStepRow(this)" class="btn btn-sm btn-circle btn-ghost text-red-400 absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                    <div class="grid grid-cols-2 gap-4 mb-2 pr-8">
+                        <div class="form-control">
+                            <label class="label pt-0"><span class="label-text text-gray-400 text-xs">Step Number (e.g. 01)</span></label>
+                            <input type="text" class="step-num input input-sm input-bordered bg-base-200 border-white/10" value="${String(step.step_num || '').replace(/"/g, '&quot;')}">
+                        </div>
+                        <div class="form-control">
+                            <label class="label pt-0"><span class="label-text text-gray-400 text-xs">Title</span></label>
+                            <input type="text" class="step-title input input-sm input-bordered bg-base-200 border-white/10" value="${String(step.title || '').replace(/"/g, '&quot;')}">
+                        </div>
+                    </div>
+                    <div class="form-control">
+                        <label class="label pt-0"><span class="label-text text-gray-400 text-xs">Description</span></label>
+                        <textarea class="step-desc textarea textarea-sm textarea-bordered bg-base-200 border-white/10 h-16">${String(step.description || '')}</textarea>
+                    </div>
+                </div>
+            `);
+        });
+    }
+
+    window.addStepRow = () => {
+        let steps = [];
+        try { steps = JSON.parse(document.getElementById('landing-steps').value || "[]"); } catch(e){}
+        if (!Array.isArray(steps)) steps = [];
+        steps.push({step_num: "0" + (steps.length + 1), title: "", description: ""});
+        document.getElementById('landing-steps').value = JSON.stringify(steps);
+        renderStepsBuilder();
+    };
+
+    window.removeStepRow = (btn) => {
+        btn.closest('.step-row').remove();
+    };
+
+    // --- Reviews Builder Logic ---
+    function renderReviewsBuilder() {
+        const container = document.getElementById('reviews-builder-container');
+        if(!container) return;
+        let reviews = [];
+        try { reviews = JSON.parse(document.getElementById('landing-reviews').value); } catch(e){}
+        if (!Array.isArray(reviews)) reviews = [];
+        
+        container.innerHTML = '';
+        reviews.forEach((review, idx) => {
+            container.insertAdjacentHTML('beforeend', `
+                <div class="review-row bg-base-100 p-4 rounded-xl border border-white/5 relative group">
+                    <button type="button" onclick="removeReviewRow(this)" class="btn btn-sm btn-circle btn-ghost text-red-400 absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                    <div class="form-control mb-2 pr-8">
+                        <label class="label pt-0"><span class="label-text text-gray-400 text-xs">Quote</span></label>
+                        <textarea class="review-quote textarea textarea-sm textarea-bordered bg-base-200 border-white/10 h-16">${String(review.quote || '')}</textarea>
+                    </div>
+                    <div class="grid grid-cols-3 gap-4">
+                        <div class="form-control">
+                            <label class="label pt-0"><span class="label-text text-gray-400 text-xs">Name</span></label>
+                            <input type="text" class="review-name input input-sm input-bordered bg-base-200 border-white/10" value="${String(review.name || '').replace(/"/g, '&quot;')}">
+                        </div>
+                        <div class="form-control">
+                            <label class="label pt-0"><span class="label-text text-gray-400 text-xs">Role</span></label>
+                            <input type="text" class="review-role input input-sm input-bordered bg-base-200 border-white/10" value="${String(review.role || '').replace(/"/g, '&quot;')}">
+                        </div>
+                        <div class="form-control">
+                            <label class="label pt-0"><span class="label-text text-gray-400 text-xs">Initials</span></label>
+                            <input type="text" class="review-initials input input-sm input-bordered bg-base-200 border-white/10" value="${String(review.initials || '').replace(/"/g, '&quot;')}">
+                        </div>
+                    </div>
+                </div>
+            `);
+        });
+    }
+
+    window.addReviewRow = () => {
+        let reviews = [];
+        try { reviews = JSON.parse(document.getElementById('landing-reviews').value || "[]"); } catch(e){}
+        if (!Array.isArray(reviews)) reviews = [];
+        reviews.push({quote: "", name: "", role: "", initials: ""});
+        document.getElementById('landing-reviews').value = JSON.stringify(reviews);
+        renderReviewsBuilder();
+    };
+
+    window.removeReviewRow = (btn) => {
+        btn.closest('.review-row').remove();
+    };
+
+    // --- Footer Builder Logic ---
+    function renderFooterBuilder() {
+        const container = document.getElementById('footer-builder-container');
+        if(!container) return;
+        let footerData = {};
+        try { footerData = JSON.parse(document.getElementById('landing-footer').value); } catch(e){}
+        if (!footerData || typeof footerData !== 'object' || Array.isArray(footerData)) footerData = {};
+        
+        container.innerHTML = '';
+        
+        // Define standard columns if empty
+        const columns = ['Product', 'Company', 'Enterprise', 'Resources'];
+        
+        columns.forEach(col => {
+            let links = footerData[col] || [];
+            if(!Array.isArray(links)) links = [];
+            
+            let linksHtml = links.map((link, linkIdx) => `
+                <div class="footer-link-row flex items-center gap-2 mb-2 group/link">
+                    <button type="button" onclick="this.closest('.footer-link-row').remove()" class="btn btn-xs btn-circle btn-ghost text-red-400 opacity-0 group-hover/link:opacity-100 transition-opacity">✕</button>
+                    <input type="text" class="footer-link-name input input-xs input-bordered bg-base-200 border-white/10 flex-1" placeholder="Link Name" value="${String(link.name || '').replace(/"/g, '&quot;')}">
+                    <input type="text" class="footer-link-url input input-xs input-bordered bg-base-200 border-white/10 flex-1" placeholder="URL" value="${String(link.url || '').replace(/"/g, '&quot;')}">
+                </div>
+            `).join('');
+
+            container.insertAdjacentHTML('beforeend', `
+                <div class="footer-col-group bg-base-100 p-4 rounded-xl border border-white/5" data-col="${col}">
+                    <h3 class="text-white font-semibold mb-3">${col}</h3>
+                    <div class="footer-links-container">
+                        ${linksHtml}
+                    </div>
+                    <button type="button" onclick="addFooterLinkRow(this)" class="btn btn-xs btn-outline border-white/20 text-gray-400 hover:text-white mt-2">+ Add Link</button>
+                </div>
+            `);
+        });
+    }
+
+    window.addFooterLinkRow = (btn) => {
+        const linksContainer = btn.previousElementSibling;
+        linksContainer.insertAdjacentHTML('beforeend', `
+            <div class="footer-link-row flex items-center gap-2 mb-2 group/link">
+                <input type="text" class="footer-link-name input input-sm input-bordered bg-base-200 border-white/10 w-1/2" placeholder="Name">
+                <input type="text" class="footer-link-url input input-sm input-bordered bg-base-200 border-white/10 w-1/2" placeholder="URL">
+                <button type="button" onclick="this.closest('.footer-link-row').remove()" class="btn btn-xs btn-circle btn-ghost text-red-400 opacity-0 group-hover/link:opacity-100">✕</button>
+            </div>
+        `);
+    };
+
     document.getElementById('form-admin-landing')?.addEventListener('submit', async(e) => {
         e.preventDefault();
         
+        // Serialize Features Builder
+        const featureRows = document.querySelectorAll('.feature-row');
+        const newFeatures = [];
+        featureRows.forEach(row => {
+            const title = row.querySelector('.feature-title').value.trim();
+            const color = row.querySelector('.feature-color').value.trim();
+            const desc = row.querySelector('.feature-desc').value.trim();
+            if(title || desc) newFeatures.push({title, color, description: desc});
+        });
+        document.getElementById('landing-features').value = JSON.stringify(newFeatures);
+
+        // Serialize Steps Builder
+        const stepRows = document.querySelectorAll('.step-row');
+        const newSteps = [];
+        stepRows.forEach(row => {
+            const num = row.querySelector('.step-num').value.trim();
+            const title = row.querySelector('.step-title').value.trim();
+            const desc = row.querySelector('.step-desc').value.trim();
+            if(title || desc) newSteps.push({step_num: num, title, description: desc});
+        });
+        document.getElementById('landing-steps').value = JSON.stringify(newSteps);
+
+        // Serialize Reviews Builder
+        const reviewRows = document.querySelectorAll('.review-row');
+        const newReviews = [];
+        reviewRows.forEach(row => {
+            const quote = row.querySelector('.review-quote').value.trim();
+            const name = row.querySelector('.review-name').value.trim();
+            const role = row.querySelector('.review-role').value.trim();
+            const initials = row.querySelector('.review-initials').value.trim();
+            if(quote || name) newReviews.push({quote, name, role, initials});
+        });
+        document.getElementById('landing-reviews').value = JSON.stringify(newReviews);
+
+        // Serialize Footer Builder
+        const footerColBlocks = document.querySelectorAll('.footer-col-block');
+        const newFooter = {};
+        footerColBlocks.forEach(block => {
+            const colName = block.getAttribute('data-col');
+            const linkRows = block.querySelectorAll('.footer-link-row');
+            const links = [];
+            linkRows.forEach(row => {
+                const name = row.querySelector('.footer-link-name').value.trim();
+                const url = row.querySelector('.footer-link-url').value.trim();
+                if(name || url) links.push({name, url});
+            });
+            newFooter[colName] = links;
+        });
+        document.getElementById('landing-footer').value = JSON.stringify(newFooter);
+
         // Serialize FAQ Builder back to JSON
         const faqRows = document.querySelectorAll('.faq-row');
         const newFaqs = [];
@@ -675,8 +1046,9 @@ document.addEventListener('DOMContentLoaded', () => {
             JSON.parse(document.getElementById('landing-faq').value);
             JSON.parse(document.getElementById('landing-footer').value);
             JSON.parse(document.getElementById('landing-reviews').value);
+            JSON.parse(document.getElementById('landing-features').value);
         } catch(err) {
-            if(window.showToast) showToast("Invalid JSON format. Please check your syntax.", "error");
+            if(window.showToast) showToast("Invalid format internally. Please report this error.", "error");
             return;
         }
 
@@ -685,6 +1057,16 @@ document.addEventListener('DOMContentLoaded', () => {
             {key: 'LANDING_FAQ', value: document.getElementById('landing-faq').value},
             {key: 'LANDING_FOOTER', value: document.getElementById('landing-footer').value},
             {key: 'LANDING_REVIEWS', value: document.getElementById('landing-reviews').value},
+            {key: 'LANDING_FEATURES', value: document.getElementById('landing-features').value},
+            
+            {key: 'LANDING_HERO_BADGE', value: document.getElementById('set-hero-badge')?.value || ''},
+            {key: 'LANDING_HERO_TITLE', value: document.getElementById('set-hero-title')?.value || ''},
+            {key: 'LANDING_HERO_SUBTITLE', value: document.getElementById('set-hero-subtitle')?.value || ''},
+            {key: 'LANDING_HERO_CTA', value: document.getElementById('set-hero-cta')?.value || ''},
+            
+            {key: 'LANDING_FEATURES_TITLE', value: document.getElementById('set-features-title')?.value || ''},
+            {key: 'LANDING_FEATURES_SUBTITLE', value: document.getElementById('set-features-subtitle')?.value || ''},
+
             {category: 'landing', key: 'partner_title', value: document.getElementById('set-partner-title')?.value || ''},
             {category: 'landing', key: 'partner_subtitle', value: document.getElementById('set-partner-subtitle')?.value || ''},
             {category: 'landing', key: 'partner_b1_title', value: document.getElementById('set-partner-b1-title')?.value || ''},
@@ -710,7 +1092,7 @@ document.addEventListener('DOMContentLoaded', () => {
             list.innerHTML = '';
             
             if(!policies || policies.length === 0) {
-                list.innerHTML = '<div class="p-4 text-center text-gray-500">No policies created yet.</div>';
+                list.innerHTML = '<div class="p-4 text-center text-gray-400">No policies created yet.</div>';
                 return;
             }
             
@@ -718,7 +1100,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const div = document.createElement('div');
                 div.className = 'flex justify-between items-center p-4 bg-dark/50 rounded-lg';
                 div.innerHTML = `
-                    <div><h4 class="font-bold text-white">${p.title}</h4><p class="text-xs text-gray-500">/${p.slug}</p></div>
+                    <div><h4 class="font-bold text-white">${p.title}</h4><p class="text-xs text-gray-400">/${p.slug}</p></div>
                     <div class="space-x-2">
                         <button class="text-primary hover:text-indigo-400 text-sm font-semibold" onclick="editPolicy('${p.slug}')">Edit</button>
                         <button class="text-red-400 hover:text-red-300 text-sm font-semibold" onclick="deletePolicy('${p.slug}')">Delete</button>
@@ -786,10 +1168,23 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const waCheckbox = document.getElementById('notif-send-whatsapp');
+    const waContainer = document.getElementById('notif-wa-template-container');
+    if (waCheckbox) {
+        waCheckbox.addEventListener('change', (e) => {
+            if(waContainer) waContainer.style.display = e.target.checked ? 'block' : 'none';
+            if (e.target.checked && document.getElementById('notif-whatsapp-template').options.length <= 1) {
+                if (typeof fetchAdminWhatsappTemplates === 'function') fetchAdminWhatsappTemplates();
+            }
+        });
+    }
+
     document.getElementById('form-notif')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const msg = document.getElementById('notif-msg')?.value;
         const sendEmail = document.getElementById('notif-send-email')?.checked;
+        const sendWa = document.getElementById('notif-send-whatsapp')?.checked;
+        const waTemplate = document.getElementById('notif-whatsapp-template')?.value;
         const subject = document.getElementById('notif-subject')?.value || "Important Announcement";
         
         if(!msg) return;
@@ -799,11 +1194,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sendEmail) {
                 await api.post('/admin/send-email', { target_email: "all_users", subject: subject, body_html: msg });
             }
+
+            if (sendWa && waTemplate) {
+                await api.post('/admin/broadcast-whatsapp', { template_name: waTemplate });
+            }
             
             if(window.showToast) showToast("Broadcast sent!", "success");
             document.getElementById('notif-modal')?.close();
             document.getElementById('form-notif')?.reset();
             if(notifSubjContainer) notifSubjContainer.style.display = 'none';
+            if(waContainer) waContainer.style.display = 'none';
         } catch(err) { if(window.showToast) showToast(err.message, "error"); }
     });
 
@@ -836,9 +1236,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const form = document.getElementById('form-admin-email');
         if(form) form.dataset.bulkEmails = JSON.stringify(emails);
         
+        const title = document.getElementById('admin-email-modal-title');
+        if(title) title.textContent = `Send Bulk Email (${emails.length} Users)`;
+
         const toInput = document.getElementById('admin-email-to');
         if(toInput) {
-            toInput.value = emails.join(', ');
+            toInput.value = `${emails.length} Users Selected`;
             toInput.readOnly = true;
         }
         
@@ -854,11 +1257,60 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('admin-email-modal')?.showModal();
     };
 
+    window.openChangePlanModal = async (clientId) => {
+        document.getElementById('change-plan-client-id').value = clientId;
+        const select = document.getElementById('change-plan-select');
+        select.innerHTML = '<option value="">Loading plans...</option>';
+        document.getElementById('client-change-plan-modal').showModal();
+        
+        try {
+            const plans = await api.get('/admin/plans');
+            select.innerHTML = '';
+            plans.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.name;
+                select.appendChild(opt);
+            });
+        } catch (e) {
+            console.error("Failed to load plans:", e);
+            select.innerHTML = '<option value="">Failed to load plans</option>';
+        }
+    };
+
+    document.getElementById('form-change-plan')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type="submit"]');
+        if(!btn) return;
+        btn.innerHTML = '<span class="loading loading-spinner"></span> Saving...';
+        btn.disabled = true;
+        
+        const clientId = document.getElementById('change-plan-client-id').value;
+        const planId = document.getElementById('change-plan-select').value;
+        const duration = document.getElementById('change-plan-duration').value;
+        
+        try {
+            await api.put(`/admin/clients/${clientId}/plan`, { plan_id: planId, duration: duration });
+            if(window.showToast) showToast("Client plan updated successfully", "success");
+            document.getElementById('client-change-plan-modal').close();
+            loadUsers(); // Refresh the table
+        } catch(err) {
+            console.error(err);
+            if(window.showToast) showToast("Failed to update plan", "error");
+        } finally {
+            btn.innerHTML = 'Save Changes';
+            btn.disabled = false;
+        }
+    });
+
     window.openAdminEmailModal = (email, isDemo = false) => {
         document.getElementById('form-admin-email')?.reset();
         const form = document.getElementById('form-admin-email');
         if(form) delete form.dataset.bulkEmails;
         
+        const title = document.getElementById('admin-email-modal-title');
+        if(title) title.textContent = 'Send Email to User';
+
         const toInput = document.getElementById('admin-email-to');
         if(toInput) {
             toInput.value = email;
@@ -910,7 +1362,7 @@ document.addEventListener('DOMContentLoaded', () => {
             list.innerHTML = '';
             
             if(!codes || codes.length === 0) {
-                list.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">No promo codes found.</td></tr>';
+                list.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-400">No promo codes found.</td></tr>';
                 return;
             }
             
@@ -993,3 +1445,244 @@ document.addEventListener('DOMContentLoaded', () => {
 
 });
 
+
+
+window.generateAdminEmailAI = async function() {
+    const promptText = prompt("What kind of email do you want to send to this user?\n(e.g., 'Welcome them to the platform', 'Warn them about their usage limit')");
+    if(!promptText) return;
+
+    const btn = document.getElementById('btn-admin-ai');
+    const ogHtml = btn.innerHTML;
+    btn.innerHTML = '<span class="loading loading-spinner loading-xs"></span> Generating...';
+    btn.disabled = true;
+
+    try {
+        const res = await api.post('/admin/generate-email', { prompt: promptText });
+        if(res.subject && res.body_html) {
+            document.getElementById('admin-email-subject').value = res.subject;
+            document.getElementById('admin-email-body').value = res.body_html;
+            if(window.showToast) showToast('AI Email Generated Successfully!', 'success');
+        } else {
+            if(window.showToast) showToast('Failed to generate template format', 'error');
+        }
+    } catch (err) {
+        if(window.showToast) showToast('AI Generation failed: ' + err.message, 'error');
+    } finally {
+        btn.innerHTML = ogHtml;
+        btn.disabled = false;
+    }
+}
+
+// --- Appointments ---
+async function loadAppointments() {
+    try {
+        const appointments = await api.get('/admin/appointments');
+        const tbody = document.getElementById('admin-appointments-tbody');
+        if (!tbody) return;
+        
+        if (!appointments || appointments.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center text-gray-500 py-4">No appointments found.</td></tr>`;
+            return;
+        }
+        
+        tbody.innerHTML = appointments.map(a => `
+            <tr>
+                <td>${a.date}</td>
+                <td>${a.time_slot}</td>
+                <td class="font-bold">${a.name}</td>
+                <td>${a.email}</td>
+                <td>
+                    <span class="badge ${a.status === 'confirmed' ? 'badge-success' : 'badge-ghost'} badge-sm">
+                        ${a.status}
+                    </span>
+                </td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        console.error("Failed to load appointments:", err);
+    }
+}
+
+async function loadNewsletter() {
+    try {
+        const subscribers = await api.get('/admin/newsletter/subscribers');
+        const tbody = document.getElementById('newsletter-tbody');
+        tbody.innerHTML = subscribers.map(s => `
+            <tr>
+                <td>
+                    <label>
+                        <input type="checkbox" class="checkbox checkbox-sm nl-row-checkbox" value="${s.email}" />
+                    </label>
+                </td>
+                <td>${s.email}</td>
+                <td>${s.mobile || '-'}</td>
+                <td>${window.components.formatDate(s.created_at)}</td>
+            </tr>
+        `).join('');
+
+        const selectAll = document.getElementById('nl-select-all');
+        if (selectAll) {
+            selectAll.checked = false;
+            selectAll.onchange = (e) => {
+                document.querySelectorAll('.nl-row-checkbox').forEach(cb => cb.checked = e.target.checked);
+            };
+        }
+    } catch (err) {
+        console.error("Failed to load newsletter subscribers:", err);
+    }
+}
+
+document.getElementById('btn-nl-generate').addEventListener('click', async () => {
+    const prompt = document.getElementById('nl-ai-prompt').value;
+    if (!prompt) return window.showToast('Please provide a prompt for the AI.', 'error');
+    
+    const btn = document.getElementById('btn-nl-generate');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading loading-spinner loading-xs"></span> Generating...';
+    
+    try {
+        const res = await api.post('/admin/generate-email', { prompt });
+        document.getElementById('nl-subject').value = res.subject;
+        document.getElementById('nl-body').value = res.body_html;
+        window.showToast('Email generated successfully!');
+    } catch (err) {
+        window.showToast('Failed to generate email.', 'error');
+    }
+    
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+});
+
+window.switchNlTab = (tab) => {
+    document.getElementById('tab-nl-email').classList.remove('tab-active');
+    document.getElementById('tab-nl-whatsapp').classList.remove('tab-active');
+    document.getElementById('nl-email-content').classList.add('hidden');
+    document.getElementById('nl-whatsapp-content').classList.add('hidden');
+
+    document.getElementById(`tab-nl-${tab}`).classList.add('tab-active');
+    document.getElementById(`nl-${tab}-content`).classList.remove('hidden');
+};
+
+document.getElementById('btn-nl-preview').addEventListener('click', () => {
+    const subject = document.getElementById('nl-subject').value;
+    const body_html = document.getElementById('nl-body').value;
+    if (!subject || !body_html) return window.showToast('Please provide a subject and body first.', 'error');
+    
+    document.getElementById('nl-preview-subject').innerText = subject;
+    document.getElementById('nl-preview-body').innerHTML = body_html;
+    document.getElementById('nl-preview-modal').showModal();
+});
+
+document.getElementById('form-nl-broadcast').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const subject = document.getElementById('nl-subject').value;
+    const body_html = document.getElementById('nl-body').value;
+    
+    const checkboxes = document.querySelectorAll('.nl-row-checkbox:checked');
+    if (checkboxes.length === 0) return window.showToast('Please select at least one subscriber.', 'error');
+    const target_emails = Array.from(checkboxes).map(cb => cb.value);
+    
+    const btn = e.target.querySelector('button[type="submit"]');
+    if (!confirm(`Are you sure you want to send this email to ${target_emails.length} subscriber(s)?`)) return;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading loading-spinner loading-xs"></span> Sending...';
+    
+    try {
+        const res = await api.post('/admin/newsletter/broadcast', { subject, body_html, target_emails });
+        window.showToast(`Broadcast sent! Sent to ${res.sent} subscribers.`, 'success');
+        e.target.reset();
+    } catch (err) {
+        window.showToast(err.message || 'Failed to send broadcast.', 'error');
+    }
+    
+    btn.disabled = false;
+    btn.innerHTML = 'Send Broadcast';
+});
+
+document.getElementById('form-nl-wa-broadcast').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const template_name = document.getElementById('nl-wa-template').value;
+    
+    const checkboxes = document.querySelectorAll('.nl-row-checkbox:checked');
+    if (checkboxes.length === 0) return window.showToast('Please select at least one subscriber.', 'error');
+    const target_emails = Array.from(checkboxes).map(cb => cb.value);
+    
+    const btn = e.target.querySelector('button[type="submit"]');
+    if (!confirm(`Are you sure you want to send this WhatsApp message to ${target_emails.length} subscriber(s)?`)) return;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading loading-spinner loading-xs"></span> Sending...';
+    
+    try {
+        const res = await api.post('/admin/newsletter/broadcast-whatsapp', { template_name, target_emails });
+        window.showToast(`WhatsApp Broadcast finished! Sent to ${res.sent} subscribers.`, 'success');
+        e.target.reset();
+    } catch (err) {
+        window.showToast(err.message || 'Failed to send WhatsApp broadcast.', 'error');
+    }
+    
+    btn.disabled = false;
+    btn.innerHTML = 'Send WhatsApp Broadcast';
+});
+
+
+
+// --- SUB-ADMINS ---
+async function renderSubAdmins() {
+    try {
+        const users = await api.get('/admin/subadmins');
+        const tbody = document.getElementById('subadmins-tbody');
+        if (!tbody) return;
+        
+        tbody.innerHTML = '';
+        users.forEach(u => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${u.name}</td>
+                <td>${u.email}</td>
+                <td>${new Date(u.created_at).toLocaleDateString()}</td>
+                <td><span class="badge ${u.is_active ? 'badge-success' : 'badge-error'}">${u.is_active ? 'Active' : 'Disabled'}</span></td>
+                <td class="text-right">
+                    <button class="btn btn-sm btn-ghost text-red-400 hover:bg-red-400/20" onclick="deleteSubAdmin('${u.id}')">Revoke</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch(e) {
+        if (e.message.includes('403')) {
+            showToast('Access denied', 'error');
+            window.location.hash = 'dashboard';
+        }
+    }
+}
+
+document.getElementById('form-subadmin')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+        name: document.getElementById('subadmin-name').value,
+        email: document.getElementById('subadmin-email').value,
+        password: document.getElementById('subadmin-password').value
+    };
+    try {
+        await api.post('/admin/subadmins', payload);
+        document.getElementById('modal-subadmin').close();
+        e.target.reset();
+        showToast('Sub-Admin created', 'success');
+        renderSubAdmins();
+    } catch(err) {
+        showToast(err.message || 'Failed to create sub-admin', 'error');
+    }
+});
+
+window.deleteSubAdmin = async (id) => {
+    if(!confirm("Are you sure you want to revoke this sub-admin's access?")) return;
+    try {
+        await api.delete(`/admin/subadmins/${id}`);
+        showToast('Sub-admin revoked', 'success');
+        renderSubAdmins();
+    } catch (e) {
+        showToast('Failed to revoke', 'error');
+    }
+};
