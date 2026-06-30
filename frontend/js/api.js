@@ -15,20 +15,35 @@ const api = {
         localStorage.removeItem('refresh_token');
     },
 
+loaderTimeout: null,
+    activeRequests: 0,
+
     showLoader() {
-        const loader = document.getElementById('global-loader');
-        if (loader) {
-            loader.classList.remove('hidden');
-            // Small delay to allow display:block to apply before opacity transition
-            setTimeout(() => loader.classList.remove('opacity-0'), 10);
+        this.activeRequests++;
+        if (this.activeRequests === 1) {
+            this.loaderTimeout = setTimeout(() => {
+                const loader = document.getElementById('global-loader');
+                if (loader && this.activeRequests > 0) {
+                    loader.classList.remove('hidden');
+                    setTimeout(() => loader.classList.remove('opacity-0'), 10);
+                }
+            }, 300); // 300ms debounce
         }
     },
 
     hideLoader() {
-        const loader = document.getElementById('global-loader');
-        if (loader) {
-            loader.classList.add('opacity-0');
-            setTimeout(() => loader.classList.add('hidden'), 300); // match transition duration
+        this.activeRequests--;
+        if (this.activeRequests <= 0) {
+            this.activeRequests = 0;
+            if (this.loaderTimeout) {
+                clearTimeout(this.loaderTimeout);
+                this.loaderTimeout = null;
+            }
+            const loader = document.getElementById('global-loader');
+            if (loader) {
+                loader.classList.add('opacity-0');
+                setTimeout(() => loader.classList.add('hidden'), 300);
+            }
         }
     },
 
@@ -43,7 +58,10 @@ const api = {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
-        this.showLoader();
+        if (!options.background) {
+            this.showLoader();
+        }
+        
         try {
             let response = await fetch(`${this.baseUrl}${endpoint}`, { ...options, headers });
 
@@ -61,12 +79,14 @@ const api = {
 
             return await response.json();
         } finally {
-            this.hideLoader();
+            if (!options.background) {
+                this.hideLoader();
+            }
         }
     },
 
-    get(endpoint) { return this.fetchWithAuth(endpoint); },
-    post(endpoint, body) { return this.fetchWithAuth(endpoint, { method: 'POST', body: JSON.stringify(body) }); },
-    put(endpoint, body) { return this.fetchWithAuth(endpoint, { method: 'PUT', body: JSON.stringify(body) }); },
-    delete(endpoint) { return this.fetchWithAuth(endpoint, { method: 'DELETE' }); }
+    get(endpoint, options = {}) { return this.fetchWithAuth(endpoint, options); },
+    post(endpoint, body, options = {}) { return this.fetchWithAuth(endpoint, { method: 'POST', body: JSON.stringify(body), ...options }); },
+    put(endpoint, body, options = {}) { return this.fetchWithAuth(endpoint, { method: 'PUT', body: JSON.stringify(body), ...options }); },
+    delete(endpoint, options = {}) { return this.fetchWithAuth(endpoint, { method: 'DELETE', ...options }); }
 };
