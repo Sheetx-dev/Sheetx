@@ -21,11 +21,9 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     # Startup
     print(f"Starting {settings.APP_NAME}...")
-    await init_db()  # Tables already exist, avoid duplicate table error
-    
     from backend.database import engine, Base
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    import asyncio
+
     try:
         from sqlalchemy import text
         async with engine.begin() as conn:
@@ -76,44 +74,71 @@ async def lifespan(app: FastAPI):
         ("policies", "icon", "VARCHAR DEFAULT '📜'"),
         ("policies", "description", "VARCHAR DEFAULT ''"),
         ("demo_requests", "inquiry_type", "VARCHAR DEFAULT 'Demo'"),
+        ("clients", "ai_requests_today", "INTEGER DEFAULT 0"),
     ]
 
-    from sqlalchemy import text
-    try:
-        async with engine.connect() as conn:
-            for table, col, col_def in migrations:
+    # Retry loop for Neon DB cold starts
+    max_retries = 10
+    for attempt in range(max_retries):
+        try:
+            # 1. Initialize DB and create tables if missing
+            await init_db()
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+                
+            # 2. Run migrations
+            async with engine.connect() as conn:
+                for table, col, col_def in migrations:
+                    try:
+                        await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_def}"))
+                        await conn.commit()
+                    except Exception:
+                        await conn.rollback()
+                        pass
+    
                 try:
-                    await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_def}"))
+                    await conn.execute(text("ALTER TABLE email_logs ALTER COLUMN campaign_id DROP NOT NULL"))
+                    await conn.commit()
+                except Exception:
+                    await conn.rollback()
+                    pass
+    
+                try:
+                    await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS promo_codes (
+                        id VARCHAR PRIMARY KEY,
+                        code VARCHAR UNIQUE NOT NULL,
+                        discount_pct INTEGER NOT NULL,
+                        max_uses INTEGER DEFAULT 100,
+                        uses INTEGER DEFAULT 0,
+                        is_active BOOLEAN DEFAULT TRUE,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    )
+                    """))
+                    await conn.commit()
+                except Exception:
+                    await conn.rollback()
+                    pass
+                    
+                try:
+                    await conn.execute(text("ALTER TABLE email_logs ADD COLUMN opened BOOLEAN DEFAULT FALSE"))
                     await conn.commit()
                 except Exception:
                     await conn.rollback()
                     pass
 
-            try:
-                await conn.execute(text("ALTER TABLE email_logs ALTER COLUMN campaign_id DROP NOT NULL"))
-                await conn.commit()
-            except Exception:
-                await conn.rollback()
-                pass
-
-            try:
-                await conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS promo_codes (
-                    id VARCHAR PRIMARY KEY,
-                    code VARCHAR UNIQUE NOT NULL,
-                    discount_pct INTEGER NOT NULL,
-                    max_uses INTEGER DEFAULT 100,
-                    uses INTEGER DEFAULT 0,
-                    is_active BOOLEAN DEFAULT TRUE,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                )
-                """))
-                await conn.commit()
-            except Exception:
-                await conn.rollback()
-                pass
-    except Exception as e:
-        print(f"Schema migration error: {e}")
+                try:
+                    await conn.execute(text("ALTER TABLE email_logs ADD COLUMN opened_at TIMESTAMP WITH TIME ZONE"))
+                    await conn.commit()
+                except Exception:
+                    await conn.rollback()
+                    pass
+            print("Schema migration completed successfully!")
+            break # Success, break out of retry loop
+        except Exception as e:
+            print(f"Schema migration error on attempt {attempt + 1}: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(3)
 
     # Seed Policies
     try:
