@@ -1,14 +1,14 @@
 """
 Client portal API routes.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from pydantic import BaseModel
 from typing import Optional
 
 from backend.database import get_db
-from backend.middleware.auth_middleware import require_client
+from backend.middleware.auth_middleware import require_client, require_active_subscription
 from backend.models.client import Client
 from backend.models.plan import Plan
 from backend.models.template import Template
@@ -31,11 +31,22 @@ async def get_client_profile(user, db: AsyncSession):
     result = await db.execute(select(Client).where(Client.user_id == user.id))
     client = result.scalar_one_or_none()
     if not client:
-        # If an admin is testing the client portal, they might not have a client profile yet.
+        # If an admin is testing the client portal or a user was manually created, they might not have a client profile yet.
+        from backend.models.app_settings import AppSetting
+        setting = await db.execute(select(AppSetting).where(AppSetting.key == "trial_days"))
+        setting_obj = setting.scalar_one_or_none()
+        trial_days = int(setting_obj.value) if setting_obj and setting_obj.value.isdigit() else 5
+        
+        plan_result = await db.execute(select(Plan).where(Plan.name.ilike('%Ultimat%')))
+        ultra_plan = plan_result.scalar_one_or_none()
+
         client = Client(
             id=str(uuid.uuid4()),
             user_id=user.id,
-            company_name=user.name + " Company" if getattr(user, "name", None) else "My Company"
+            company_name=user.name + " Company" if getattr(user, "name", None) else "My Company",
+            daily_email_limit=ultra_plan.email_limit_daily if ultra_plan else 1000,
+            plan_id=ultra_plan.id if ultra_plan else None,
+            trial_ends_at=datetime.now(timezone.utc) + timedelta(days=trial_days)
         )
         db.add(client)
         await db.commit()
@@ -66,7 +77,7 @@ async def get_dashboard(db: AsyncSession = Depends(get_db), current_user = Depen
     except Exception:
         pass
     
-    # Count email logs sent, failed, and recent activity
+    # Count email logs sent, failed, opened, and recent activity
     try:
         from sqlalchemy import func as sa_func, desc
         log_result = await db.execute(select(func.count(EmailLog.id)).where(
@@ -79,20 +90,27 @@ async def get_dashboard(db: AsyncSession = Depends(get_db), current_user = Depen
         ))
         total_emails_failed = failed_result.scalar() or 0
         
+        opened_result = await db.execute(select(func.count(EmailLog.id)).where(
+            EmailLog.client_id == client.id, EmailLog.opened == True
+        ))
+        total_emails_opened = opened_result.scalar() or 0
+        
         recent_res = await db.execute(select(EmailLog).where(
             EmailLog.client_id == client.id
-        ).order_by(desc(EmailLog.sent_at)).limit(10))
+        ).order_by(EmailLog.sent_at.desc().nulls_last()).limit(10))
         recent_logs = recent_res.scalars().all()
         recent_activity = [{
             "id": r.id,
             "recipient_email": r.recipient_email,
             "status": r.status,
+            "opened": r.opened,
             "sent_at": r.sent_at.isoformat() if r.sent_at else None,
             "error_message": r.error_message
         } for r in recent_logs]
     except Exception as e:
         total_emails_sent = client.emails_sent_today
         total_emails_failed = 0
+        total_emails_opened = 0
         recent_activity = []
     
     return {
@@ -102,6 +120,7 @@ async def get_dashboard(db: AsyncSession = Depends(get_db), current_user = Depen
         "total_campaigns": total_campaigns,
         "total_emails_sent": total_emails_sent,
         "total_emails_failed": total_emails_failed,
+        "total_emails_opened": total_emails_opened,
         "recent_activity": recent_activity,
         "company_name": client.company_name
     }
@@ -123,27 +142,87 @@ async def get_profile(db: AsyncSession = Depends(get_db), current_user = Depends
     
     plan_name = "Free"
     daily_limit = client.daily_email_limit
+    has_ai = False
     if client.plan:
         plan_name = client.plan.name
         daily_limit = client.plan.email_limit_daily
+        has_ai = getattr(client.plan, 'has_ai_templates', False)
+        
+    # Check expiration
+    now = datetime.now(timezone.utc)
+    is_expired = True
+    if client.subscription_ends_at and client.subscription_ends_at > now: is_expired = False
+    elif client.trial_ends_at and client.trial_ends_at > now: is_expired = False
+    
+    if is_expired:
+        plan_name = "Trial Expired"
             
+    from backend.models.user import UserRole
+    if current_user.role == UserRole.ADMIN:
+        plan_name = "Super Admin (Unlimited)"
+        daily_limit = 99999999
+        has_ai = True
+        if client.trial_ends_at is not None or client.daily_email_limit != 99999999:
+            client.trial_ends_at = None
+            client.daily_email_limit = 99999999
+            await db.commit()
+
+    def format_dt(dt):
+        if not dt: return None
+        s = dt.isoformat()
+        if not s.endswith('Z') and '+' not in s and '-' not in s[11:]:
+            return s + 'Z'
+        return s
+
     return {
         "company_name": client.company_name,
         "service_account_email": service_email,
         "plan_name": plan_name,
         "daily_limit": daily_limit,
+        "has_ai_templates": has_ai,
+        "whatsapp_access_token": client.whatsapp_access_token,
+        "whatsapp_phone_number_id": client.whatsapp_phone_number_id,
+        "whatsapp_business_account_id": client.whatsapp_business_account_id,
+        "trial_ends_at": format_dt(client.trial_ends_at),
+        "subscription_ends_at": format_dt(client.subscription_ends_at)
     }
 
 class ProfileUpdate(BaseModel):
     company_name: Optional[str] = None
+    whatsapp_access_token: Optional[str] = None
+    whatsapp_phone_number_id: Optional[str] = None
+    whatsapp_business_account_id: Optional[str] = None
 
 @router.put("/profile")
-async def update_profile(profile: ProfileUpdate, db: AsyncSession = Depends(get_db), current_user = Depends(require_client)):
+async def update_profile(profile: ProfileUpdate, db: AsyncSession = Depends(get_db), current_user = Depends(require_active_subscription)):
     client = await get_client_profile(current_user, db)
     if profile.company_name is not None:
         client.company_name = profile.company_name
+    if profile.whatsapp_access_token is not None:
+        client.whatsapp_access_token = profile.whatsapp_access_token
+    if profile.whatsapp_phone_number_id is not None:
+        client.whatsapp_phone_number_id = profile.whatsapp_phone_number_id
+    if profile.whatsapp_business_account_id is not None:
+        client.whatsapp_business_account_id = profile.whatsapp_business_account_id
     await db.commit()
     return {"status": "success"}
+
+@router.get("/whatsapp/templates")
+async def get_whatsapp_templates(db: AsyncSession = Depends(get_db), current_user = Depends(require_client)):
+    import httpx
+    client = await get_client_profile(current_user, db)
+    if not client.whatsapp_business_account_id or not client.whatsapp_access_token:
+        raise HTTPException(status_code=400, detail="WhatsApp Business Account ID and Access Token are required to fetch templates")
+    
+    url = f"https://graph.facebook.com/v25.0/{client.whatsapp_business_account_id}/message_templates?limit=100"
+    headers = {"Authorization": f"Bearer {client.whatsapp_access_token}"}
+    
+    async with httpx.AsyncClient() as http_client:
+        response = await http_client.get(url, headers=headers)
+        if response.status_code != 200:
+            raise HTTPException(status_code=400, detail=response.json().get("error", {}).get("message", "Failed to fetch templates"))
+        
+        return response.json()
 
 # --- CAMPAIGNS ---
 
@@ -152,12 +231,36 @@ class CampaignCreate(BaseModel):
     sheet_url_or_id: str
     target_columns: str = "Name, Email, Inquiry"
     status_column: str = "Status"
+    inquiry_column: str = "Inquiry"
+    default_template_id: Optional[str] = None
+    use_whatsapp: bool = False
+    default_whatsapp_template_name: Optional[str] = None
     follow_up_days: int = 0
     follow_up_template_id: Optional[str] = None
+    follow_up_whatsapp_template_name: Optional[str] = None
+    follow_up_condition: str = "always"
     max_emails_per_hour: int = 50
     send_hours_start: int = 9
     send_hours_end: int = 17
     review_mode: bool = False
+
+class CampaignUpdate(BaseModel):
+    name: Optional[str] = None
+    sheet_url_or_id: Optional[str] = None
+    target_columns: Optional[str] = None
+    status_column: Optional[str] = None
+    inquiry_column: Optional[str] = None
+    default_template_id: Optional[str] = None
+    use_whatsapp: Optional[bool] = None
+    default_whatsapp_template_name: Optional[str] = None
+    follow_up_days: Optional[int] = None
+    follow_up_template_id: Optional[str] = None
+    follow_up_whatsapp_template_name: Optional[str] = None
+    follow_up_condition: Optional[str] = None
+    max_emails_per_hour: Optional[int] = None
+    send_hours_start: Optional[int] = None
+    send_hours_end: Optional[int] = None
+    review_mode: Optional[bool] = None
 
 @router.get("/campaigns")
 async def list_campaigns(db: AsyncSession = Depends(get_db), current_user = Depends(require_client)):
@@ -170,8 +273,14 @@ async def list_campaigns(db: AsyncSession = Depends(get_db), current_user = Depe
         "google_sheet_id": c.google_sheet_id,
         "target_columns": c.target_columns,
         "status_column": c.status_column,
+        "inquiry_column": getattr(c, 'inquiry_column', 'Inquiry'),
+        "default_template_id": c.default_template_id,
+        "use_whatsapp": getattr(c, 'use_whatsapp', False),
+        "default_whatsapp_template_name": getattr(c, 'default_whatsapp_template_name', None),
         "follow_up_days": c.follow_up_days,
         "follow_up_template_id": c.follow_up_template_id,
+        "follow_up_whatsapp_template_name": c.follow_up_whatsapp_template_name,
+        "follow_up_condition": getattr(c, 'follow_up_condition', 'always'),
         "max_emails_per_hour": c.max_emails_per_hour,
         "send_hours_start": c.send_hours_start,
         "send_hours_end": c.send_hours_end,
@@ -183,7 +292,7 @@ async def list_campaigns(db: AsyncSession = Depends(get_db), current_user = Depe
     } for c in campaigns]
 
 @router.post("/campaigns")
-async def create_campaign(data: CampaignCreate, db: AsyncSession = Depends(get_db), current_user = Depends(require_client)):
+async def create_campaign(data: CampaignCreate, db: AsyncSession = Depends(get_db), current_user = Depends(require_active_subscription)):
     client = await get_client_profile(current_user, db)
     await db.refresh(client, ['plan'])
     
@@ -203,8 +312,14 @@ async def create_campaign(data: CampaignCreate, db: AsyncSession = Depends(get_d
         google_sheet_id=sheet_id,
         target_columns=data.target_columns,
         status_column=data.status_column,
+        inquiry_column=data.inquiry_column,
+        default_template_id=data.default_template_id,
+        use_whatsapp=data.use_whatsapp,
+        default_whatsapp_template_name=data.default_whatsapp_template_name,
         follow_up_days=data.follow_up_days,
         follow_up_template_id=data.follow_up_template_id,
+        follow_up_whatsapp_template_name=data.follow_up_whatsapp_template_name,
+        follow_up_condition=data.follow_up_condition,
         max_emails_per_hour=data.max_emails_per_hour,
         send_hours_start=data.send_hours_start,
         send_hours_end=data.send_hours_end,
@@ -212,10 +327,36 @@ async def create_campaign(data: CampaignCreate, db: AsyncSession = Depends(get_d
     )
     db.add(new_campaign)
     await db.commit()
-    return {"status": "success", "campaign": new_campaign}
+    await db.refresh(new_campaign)
+    return {"status": "success", "campaign_id": new_campaign.id}
+
+@router.put("/campaigns/{campaign_id}")
+async def update_campaign(campaign_id: str, data: CampaignUpdate, db: AsyncSession = Depends(get_db), current_user = Depends(require_active_subscription)):
+    client = await get_client_profile(current_user, db)
+    
+    result = await db.execute(select(Campaign).where(Campaign.id == campaign_id, Campaign.client_id == client.id))
+    campaign = result.scalar_one_or_none()
+    
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+        
+    update_data = data.model_dump(exclude_unset=True)
+    
+    if 'sheet_url_or_id' in update_data:
+        match = re.search(r'/d/([a-zA-Z0-9-_]+)', update_data['sheet_url_or_id'])
+        sheet_id = match.group(1) if match else update_data['sheet_url_or_id'].strip()
+        campaign.google_sheet_id = sheet_id
+        del update_data['sheet_url_or_id']
+        
+    for key, value in update_data.items():
+        setattr(campaign, key, value)
+        
+    await db.commit()
+    await db.refresh(campaign)
+    return {"status": "success", "campaign_id": campaign.id}
 
 @router.delete("/campaigns/{campaign_id}")
-async def delete_campaign(campaign_id: str, db: AsyncSession = Depends(get_db), current_user = Depends(require_client)):
+async def delete_campaign(campaign_id: str, db: AsyncSession = Depends(get_db), current_user = Depends(require_active_subscription)):
     client = await get_client_profile(current_user, db)
     result = await db.execute(select(Campaign).where(Campaign.id == campaign_id, Campaign.client_id == client.id))
     campaign = result.scalar_one_or_none()
@@ -235,28 +376,38 @@ async def get_client_notifications(db: AsyncSession = Depends(get_db), current_u
 async def get_client_chart(db: AsyncSession = Depends(get_db), current_user = Depends(require_client)):
     client = await get_client_profile(current_user, db)
     seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
-    result = await db.execute(select(EmailLog.sent_at).where(
+    result = await db.execute(select(EmailLog.sent_at, EmailLog.whatsapp_sent).where(
         EmailLog.client_id == client.id, 
         EmailLog.sent_at >= seven_days_ago
     ))
-    logs = result.scalars().all()
+    logs = result.all()
     labels = []
-    data = []
+    email_data = []
+    whatsapp_data = []
     for i in range(6, -1, -1):
         d = datetime.now(timezone.utc) - timedelta(days=i)
         labels.append(d.strftime("%Y-%m-%d"))
-        data.append(0)
+        email_data.append(0)
+        whatsapp_data.append(0)
     
-    for sent_at in logs:
+    for row in logs:
+        sent_at = row.sent_at
+        wa_sent = getattr(row, 'whatsapp_sent', False)
         if not sent_at: continue
         date_str = sent_at.strftime("%Y-%m-%d")
         if date_str in labels:
-            data[labels.index(date_str)] += 1
+            idx = labels.index(date_str)
+            if wa_sent:
+                whatsapp_data[idx] += 1
             
-    return {"labels": labels, "data": data}
+            email_was_sent = bool(getattr(row, 'thread_id', None)) or not wa_sent
+            if email_was_sent:
+                email_data[idx] += 1
+            
+    return {"labels": labels, "email_data": email_data, "whatsapp_data": whatsapp_data}
 
 @router.post("/upload")
-async def upload_image(file: UploadFile = File(...), db: AsyncSession = Depends(get_db), current_user = Depends(require_client)):
+async def upload_image(file: UploadFile = File(...), db: AsyncSession = Depends(get_db), current_user = Depends(require_active_subscription)):
     client = await get_client_profile(current_user, db)
     
     contents = await file.read()
@@ -286,7 +437,7 @@ async def list_email_queue(db: AsyncSession = Depends(get_db), current_user = De
     } for q in queue]
 
 @router.post("/queue/{id}/approve")
-async def approve_queue_item(id: str, db: AsyncSession = Depends(get_db), current_user = Depends(require_client)):
+async def approve_queue_item(id: str, db: AsyncSession = Depends(get_db), current_user = Depends(require_active_subscription)):
     client = await get_client_profile(current_user, db)
     item = await db.get(EmailQueue, id)
     if not item or item.client_id != client.id: raise HTTPException(404, "Item not found")
@@ -295,7 +446,7 @@ async def approve_queue_item(id: str, db: AsyncSession = Depends(get_db), curren
     return {"status": "success"}
 
 @router.post("/queue/{id}/reject")
-async def reject_queue_item(id: str, db: AsyncSession = Depends(get_db), current_user = Depends(require_client)):
+async def reject_queue_item(id: str, db: AsyncSession = Depends(get_db), current_user = Depends(require_active_subscription)):
     client = await get_client_profile(current_user, db)
     item = await db.get(EmailQueue, id)
     if not item or item.client_id != client.id: raise HTTPException(404, "Item not found")
@@ -345,3 +496,25 @@ async def get_inbox(db: AsyncSession = Depends(get_db), current_user = Depends(r
                 })
                 
     return inbox_items
+
+
+
+
+# --- WHATSAPP WEBHOOK ---
+@router.get("/whatsapp/webhook")
+async def verify_whatsapp_webhook(request: Request):
+    hub_mode = request.query_params.get("hub.mode")
+    hub_challenge = request.query_params.get("hub.challenge")
+    hub_verify_token = request.query_params.get("hub.verify_token")
+    if hub_verify_token == "sheetx_whatsapp":
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(hub_challenge)
+    return {"error": "Invalid token"}
+
+@router.post("/whatsapp/webhook")
+async def receive_whatsapp_webhook(payload: dict):
+    import json
+    print("\n================ WA WEBHOOK ================")
+    print(json.dumps(payload, indent=2))
+    print("============================================\n")
+    return {"status": "ok"}
