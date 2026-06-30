@@ -12,12 +12,15 @@ import asyncio
 from backend.config import settings
 
 from backend.database import get_db
-from backend.middleware.auth_middleware import require_admin
+from backend.middleware.auth_middleware import require_admin, require_super_admin
 from backend.models.client import Client
-from backend.models.user import User
+from backend.models.user import User, UserRole
 from backend.models.plan import Plan
 from backend.models.payment import Payment
-from backend.models.app_settings import Policy, AppSetting, DemoRequest
+from backend.models.app_settings import Policy, AppSetting, DemoRequest, Notification
+from backend.models.promo_code import PromoCode
+from backend.models.appointment import Appointment
+from backend.services.whatsapp_service import send_whatsapp_message
 from backend.models.email_log import EmailLog
 from backend.models.campaign import Campaign
 from datetime import datetime, timedelta, timezone
@@ -30,7 +33,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 async def get_global_email_logs(db: AsyncSession = Depends(get_db), admin = Depends(require_admin), limit: int = 50):
     result = await db.execute(
         select(EmailLog)
-        .order_by(EmailLog.sent_at.desc())
+        .order_by(EmailLog.sent_at.desc().nulls_last())
         .limit(limit)
     )
     logs = result.scalars().all()
@@ -108,7 +111,8 @@ async def list_clients(db: AsyncSession = Depends(get_db), admin = Depends(requi
         "plan": c.plan.name if c.plan else "Free",
         "status": c.status, 
         "emails_sent_today": c.emails_sent_today,
-        "is_demo": getattr(c, "is_demo", False)
+        "is_demo": getattr(c, "is_demo", False),
+        "trial_ends_at": c.trial_ends_at.isoformat() if c.trial_ends_at else None
     } for c in clients]
 
 @router.get("/clients/{id}")
@@ -175,6 +179,35 @@ async def update_client_features(id: str, features: ClientFeaturesUpdate, db: As
     await db.commit()
     return {"status": "success"}
 
+class ClientPlanUpdate(BaseModel):
+    plan_id: str
+    duration: str # "1_month", "1_year", "lifetime"
+
+@router.put("/clients/{id}/plan")
+async def update_client_plan(id: str, data: ClientPlanUpdate, db: AsyncSession = Depends(get_db), admin = Depends(require_admin)):
+    from datetime import datetime, timedelta, timezone
+    client = await db.get(Client, id)
+    if not client:
+        raise HTTPException(404, "Client not found")
+        
+    plan = await db.get(Plan, data.plan_id)
+    if not plan:
+        raise HTTPException(404, "Plan not found")
+        
+    client.plan_id = plan.id
+    client.daily_email_limit = plan.email_limit_daily
+    
+    now = datetime.now(timezone.utc)
+    if data.duration == "1_month":
+        client.subscription_ends_at = now + timedelta(days=30)
+    elif data.duration == "1_year":
+        client.subscription_ends_at = now + timedelta(days=365)
+    elif data.duration == "lifetime":
+        client.subscription_ends_at = datetime(2099, 12, 31, tzinfo=timezone.utc)
+        
+    await db.commit()
+    return {"status": "success"}
+
 # --- PLANS ---
 class PlanCreate(BaseModel):
     name: str
@@ -185,21 +218,23 @@ class PlanCreate(BaseModel):
     email_limit_daily: int
     campaign_limit: int
     features_json: str
+    has_ai_templates: bool = False
+    ai_limit: int = -1
 
 @router.get("/plans")
-async def list_plans(db: AsyncSession = Depends(get_db), admin = Depends(require_admin)):
+async def list_plans(db: AsyncSession = Depends(get_db), admin = Depends(require_super_admin)):
     result = await db.execute(select(Plan).order_by(Plan.sort_order))
     return result.scalars().all()
 
 @router.post("/plans")
-async def create_plan(plan: PlanCreate, db: AsyncSession = Depends(get_db), admin = Depends(require_admin)):
+async def create_plan(plan: PlanCreate, db: AsyncSession = Depends(get_db), admin = Depends(require_super_admin)):
     new_plan = Plan(**plan.model_dump())
     db.add(new_plan)
     await db.commit()
     return new_plan
 
 @router.put("/plans/{id}")
-async def update_plan(id: str, plan_update: PlanCreate, db: AsyncSession = Depends(get_db), admin = Depends(require_admin)):
+async def update_plan(id: str, plan_update: PlanCreate, db: AsyncSession = Depends(get_db), admin = Depends(require_super_admin)):
     plan = await db.get(Plan, id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -211,7 +246,7 @@ async def update_plan(id: str, plan_update: PlanCreate, db: AsyncSession = Depen
     return plan
 
 @router.delete("/plans/{id}")
-async def delete_plan(id: str, db: AsyncSession = Depends(get_db), admin = Depends(require_admin)):
+async def delete_plan(id: str, db: AsyncSession = Depends(get_db), admin = Depends(require_super_admin)):
     plan = await db.get(Plan, id)
     if plan:
         await db.delete(plan)
@@ -224,28 +259,28 @@ class SettingUpdate(BaseModel):
     value: str
 
 @router.get("/settings")
-async def get_settings(db: AsyncSession = Depends(get_db), admin = Depends(require_admin)):
+async def get_settings(db: AsyncSession = Depends(get_db), admin = Depends(require_super_admin)):
     result = await db.execute(select(AppSetting))
     return result.scalars().all()
 
 @router.put("/settings")
-async def update_settings(settings: List[SettingUpdate], db: AsyncSession = Depends(get_db), admin = Depends(require_admin)):
+async def update_settings(settings: List[SettingUpdate], db: AsyncSession = Depends(get_db), admin = Depends(require_super_admin)):
     for setting in settings:
         result = await db.execute(select(AppSetting).where(AppSetting.key == setting.key))
         db_setting = result.scalar_one_or_none()
         if db_setting:
             db_setting.value = setting.value
-            if setting.key.startswith("LANDING_"):
+            if setting.key.startswith("LANDING_") or setting.key.startswith("partner_"):
                 db_setting.category = "landing"
         else:
-            cat = "landing" if setting.key.startswith("LANDING_") else "general"
+            cat = "landing" if (setting.key.startswith("LANDING_") or setting.key.startswith("partner_")) else "general"
             new_setting = AppSetting(key=setting.key, value=setting.value, category=cat)
             db.add(new_setting)
     await db.commit()
     return {"status": "success"}
 
 @router.post("/settings/logo")
-async def upload_logo(file: UploadFile = File(...), db: AsyncSession = Depends(get_db), admin = Depends(require_admin)):
+async def upload_logo(file: UploadFile = File(...), db: AsyncSession = Depends(get_db), admin = Depends(require_super_admin)):
     contents = await file.read()
     b64 = base64.b64encode(contents).decode("utf-8")
     mime = file.content_type if file.content_type else "image/png"
@@ -369,8 +404,15 @@ async def send_demo_emails(req: DemoEmailRequest, db: AsyncSession = Depends(get
         return {"status": "success", "message": "No pending demo requests found.", "sent_count": 0}
 
     # Use the admin's OAuth token
-    admin_user = await db.get(User, admin.id) if hasattr(admin, 'id') else admin
-    access_token = await refresh_google_token(admin_user, db)
+    if admin.role == UserRole.ADMIN and getattr(admin, 'google_refresh_token', None):
+        super_admin_user = admin
+    else:
+        super_admin = await db.execute(select(User).where(User.role == UserRole.ADMIN).where(User.google_refresh_token.is_not(None)).order_by(User.created_at.asc()))
+        super_admin_user = super_admin.scalars().first()
+        
+    if not super_admin_user:
+        raise HTTPException(400, "Super Admin Google OAuth token is missing in the system.")
+    access_token = await refresh_google_token(super_admin_user, db)
     if not access_token:
         raise HTTPException(400, "Super Admin Google OAuth token is missing or expired. Please re-login.")
 
@@ -393,7 +435,7 @@ async def send_demo_emails(req: DemoEmailRequest, db: AsyncSession = Depends(get
     return {"status": "success", "sent_count": sent_count}
 
 @router.get("/revenue")
-async def get_revenue_metrics(db: AsyncSession = Depends(get_db), current_admin = Depends(require_admin)):
+async def get_revenue_metrics(db: AsyncSession = Depends(get_db), current_admin = Depends(require_super_admin)):
     from backend.models.client import Client
     from backend.models.plan import Plan
     from sqlalchemy.orm import selectinload
@@ -429,13 +471,13 @@ class PromoCodeCreate(BaseModel):
     is_active: bool = True
 
 @router.get("/promo-codes")
-async def get_promo_codes(db: AsyncSession = Depends(get_db), current_admin = Depends(require_admin)):
+async def get_promo_codes(db: AsyncSession = Depends(get_db), current_admin = Depends(require_super_admin)):
     from backend.models.promo_code import PromoCode
     res = await db.execute(select(PromoCode).order_by(PromoCode.created_at.desc()))
     return res.scalars().all()
 
 @router.post("/promo-codes")
-async def create_promo_code(promo: PromoCodeCreate, db: AsyncSession = Depends(get_db), current_admin = Depends(require_admin)):
+async def create_promo_code(promo: PromoCodeCreate, db: AsyncSession = Depends(get_db), current_admin = Depends(require_super_admin)):
     from backend.models.promo_code import PromoCode
     pc = PromoCode(**promo.model_dump())
     db.add(pc)
@@ -447,7 +489,7 @@ async def create_promo_code(promo: PromoCodeCreate, db: AsyncSession = Depends(g
     return pc
 
 @router.delete("/promo-codes/{id}")
-async def delete_promo_code(id: str, db: AsyncSession = Depends(get_db), current_admin = Depends(require_admin)):
+async def delete_promo_code(id: str, db: AsyncSession = Depends(get_db), current_admin = Depends(require_super_admin)):
     from backend.models.promo_code import PromoCode
     pc = await db.get(PromoCode, id)
     if not pc:
@@ -483,8 +525,15 @@ async def send_admin_email(req: AdminEmailRequest, db: AsyncSession = Depends(ge
     if not targets:
         return {"status": "success", "sent": 0, "message": "No targets found."}
 
-    admin_user = await db.get(User, admin.id) if hasattr(admin, 'id') else admin
-    access_token = await refresh_google_token(admin_user, db)
+    if admin.role == UserRole.ADMIN and getattr(admin, 'google_refresh_token', None):
+        super_admin_user = admin
+    else:
+        super_admin = await db.execute(select(User).where(User.role == UserRole.ADMIN).where(User.google_refresh_token.is_not(None)).order_by(User.created_at.asc()))
+        super_admin_user = super_admin.scalars().first()
+        
+    if not super_admin_user:
+        raise HTTPException(400, "Super Admin Google OAuth token is missing in the system.")
+    access_token = await refresh_google_token(super_admin_user, db)
     if not access_token:
         raise HTTPException(400, "Super Admin Google OAuth token is missing or expired. Please re-login.")
 
@@ -502,3 +551,261 @@ async def send_admin_email(req: AdminEmailRequest, db: AsyncSession = Depends(ge
     await db.commit()
             
     return {"status": "success", "sent": sent}
+
+class AdminAIGenerateRequest(BaseModel):
+    prompt: str
+
+@router.post('/generate-email')
+async def admin_generate_email(req: AdminAIGenerateRequest, db: AsyncSession = Depends(get_db), admin = Depends(require_admin)):
+    from groq import AsyncGroq
+    from backend.config import settings
+    import json
+    
+    system_prompt = (
+        "You are an expert email copywriter. The user will give you a brief prompt about what to say to a user. " 
+        "Write a highly professional, concise email. Return ONLY a JSON object with two keys: 'subject' and 'body_html'. " 
+        "The 'body_html' should use standard HTML formatting (paragraphs, bold, etc)." 
+    )
+    
+    try:
+        client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+        response = await client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": req.prompt}
+            ],
+            model="llama-3.1-8b-instant",
+            temperature=0.7,
+            response_format={"type": "json_object"}
+        )
+        content = response.choices[0].message.content
+        return json.loads(content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+# --- WHATSAPP ENGINE ---
+import httpx
+
+@router.get("/whatsapp/templates")
+async def get_admin_whatsapp_templates(db: AsyncSession = Depends(get_db), admin = Depends(require_admin)):
+    from backend.models.app_settings import AppSetting
+    result = await db.execute(select(AppSetting).where(AppSetting.key.in_(
+        ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_BUSINESS_ACCOUNT_ID"]
+    )))
+    settings_dict = {s.key: s.value for s in result.scalars().all()}
+    
+    access_token = settings_dict.get("WHATSAPP_ACCESS_TOKEN")
+    waba_id = settings_dict.get("WHATSAPP_BUSINESS_ACCOUNT_ID")
+    
+    if not access_token or not waba_id:
+        raise HTTPException(status_code=400, detail="Global WhatsApp API credentials not configured in App Settings.")
+
+    url = f"https://graph.facebook.com/v25.0/{waba_id}/message_templates"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, headers=headers)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+
+class AdminWhatsappBroadcastRequest(BaseModel):
+    template_name: str
+
+@router.post("/broadcast-whatsapp")
+async def broadcast_whatsapp(req: AdminWhatsappBroadcastRequest, db: AsyncSession = Depends(get_db), admin = Depends(require_admin)):
+    from backend.services.whatsapp_service import send_whatsapp_message
+    from backend.models.app_settings import AppSetting
+    
+    result = await db.execute(select(AppSetting).where(AppSetting.key.in_(
+        ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"]
+    )))
+    settings_dict = {s.key: s.value for s in result.scalars().all()}
+    
+    access_token = settings_dict.get("WHATSAPP_ACCESS_TOKEN")
+    phone_id = settings_dict.get("WHATSAPP_PHONE_NUMBER_ID")
+    
+    if not access_token or not phone_id:
+        raise HTTPException(status_code=400, detail="Global WhatsApp API credentials not configured.")
+        
+    res = await db.execute(select(Client).where(Client.status == "active"))
+    clients = res.scalars().all()
+    
+    sent_count = 0
+    errors = []
+    
+    for c in clients:
+        phone = getattr(c, "phone", None)
+        if phone:
+            success, err = await send_whatsapp_message(
+                phone=phone,
+                template_name=req.template_name,
+                access_token=access_token,
+                phone_number_id=phone_id,
+                variables=[getattr(c, "name", "User")]
+            )
+            if success:
+                sent_count += 1
+            else:
+                errors.append(f"{phone}: {err}")
+                
+    return {
+        "status": "success",
+        "sent": sent_count,
+        "errors": errors
+    }
+
+@router.get("/appointments")
+async def list_appointments(db: AsyncSession = Depends(get_db), admin = Depends(require_admin)):
+    result = await db.execute(select(Appointment).order_by(Appointment.date.desc(), Appointment.time_slot.desc()))
+    return result.scalars().all()
+
+@router.get("/newsletter/subscribers")
+async def list_newsletter_subscribers(db: AsyncSession = Depends(get_db), admin = Depends(require_admin)):
+    from backend.models.newsletter import NewsletterSubscriber
+    result = await db.execute(select(NewsletterSubscriber).order_by(NewsletterSubscriber.created_at.desc()))
+    return result.scalars().all()
+
+from typing import List, Optional
+class NewsletterBroadcastReq(BaseModel):
+    subject: str
+    body_html: str
+    target_emails: Optional[List[str]] = None
+
+class NewsletterWhatsappBroadcastReq(BaseModel):
+    template_name: str
+    target_emails: Optional[List[str]] = None
+
+@router.post("/newsletter/broadcast")
+async def broadcast_newsletter(req: NewsletterBroadcastReq, db: AsyncSession = Depends(get_db), admin = Depends(require_admin)):
+    from backend.services.email_engine import refresh_google_token, send_email_via_gmail_api
+    from backend.models.user import User
+    from backend.models.newsletter import NewsletterSubscriber
+
+    if admin.role == UserRole.ADMIN and getattr(admin, 'google_refresh_token', None):
+        super_admin_user = admin
+    else:
+        super_admin = await db.execute(select(User).where(User.role == UserRole.ADMIN).where(User.google_refresh_token.is_not(None)).order_by(User.created_at.asc()))
+        super_admin_user = super_admin.scalars().first()
+        
+    if not super_admin_user:
+        raise HTTPException(400, "Super Admin Google OAuth token is missing in the system.")
+        
+    access_token = await refresh_google_token(super_admin_user, db)
+    if not access_token:
+        raise HTTPException(400, "Super Admin Google Auth missing. Please sign in with Google first.")
+
+    query = select(NewsletterSubscriber).where(NewsletterSubscriber.is_active == True)
+    if req.target_emails:
+        query = query.where(NewsletterSubscriber.email.in_(req.target_emails))
+    
+    result = await db.execute(query)
+    subscribers = result.scalars().all()
+
+    class DummyTemplate:
+        def __init__(self, subject, body_html):
+            self.subject = subject
+            self.body_html = body_html
+            
+    template = DummyTemplate(req.subject, req.body_html)
+    
+    sent_count = 0
+    errors = []
+    
+    for sub in subscribers:
+        success, error_msg = await send_email_via_gmail_api(sub.email, "Subscriber", template, access_token)
+        if success:
+            sent_count += 1
+        else:
+            errors.append(error_msg)
+            
+    return {"status": "success", "sent": sent_count, "errors": errors}
+
+@router.post("/newsletter/broadcast-whatsapp")
+async def broadcast_newsletter_whatsapp(req: NewsletterWhatsappBroadcastReq, db: AsyncSession = Depends(get_db), admin = Depends(require_admin)):
+    from backend.services.whatsapp_service import send_whatsapp_message
+    from backend.models.app_settings import AppSetting
+    from backend.models.newsletter import NewsletterSubscriber
+    
+    result = await db.execute(select(AppSetting).where(AppSetting.key.in_(
+        ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"]
+    )))
+    settings_dict = {s.key: s.value for s in result.scalars().all()}
+    
+    access_token = settings_dict.get("WHATSAPP_ACCESS_TOKEN")
+    phone_id = settings_dict.get("WHATSAPP_PHONE_NUMBER_ID")
+    
+    if not access_token or not phone_id:
+        raise HTTPException(status_code=400, detail="Global WhatsApp API credentials not configured.")
+        
+    query = select(NewsletterSubscriber).where(NewsletterSubscriber.is_active == True)
+    if req.target_emails:
+        query = query.where(NewsletterSubscriber.email.in_(req.target_emails))
+        
+    res = await db.execute(query)
+    subscribers = res.scalars().all()
+    
+    sent_count = 0
+    errors = []
+    
+    for sub in subscribers:
+        phone = getattr(sub, "mobile", None)
+        if phone:
+            success, err = await send_whatsapp_message(
+                phone=phone,
+                template_name=req.template_name,
+                access_token=access_token,
+                phone_number_id=phone_id,
+                variables=[getattr(sub, "name", "Subscriber")]
+            )
+            if success:
+                sent_count += 1
+            else:
+                errors.append(f"WhatsApp error for {phone}: {err}")
+                
+    return {"status": "success", "sent": sent_count, "errors": errors}
+
+
+# --- SUB-ADMINS ---
+import bcrypt
+
+class SubAdminCreate(BaseModel):
+    name: str
+    email: str
+    password: str
+
+@router.get("/subadmins")
+async def list_subadmins(db: AsyncSession = Depends(get_db), admin = Depends(require_super_admin)):
+    result = await db.execute(select(User).where(User.role == UserRole.SUB_ADMIN).order_by(User.created_at.desc()))
+    users = result.scalars().all()
+    return [{"id": u.id, "name": u.name, "email": u.email, "created_at": u.created_at, "is_active": u.is_active} for u in users]
+
+@router.post("/subadmins")
+async def create_subadmin(data: SubAdminCreate, db: AsyncSession = Depends(get_db), admin = Depends(require_super_admin)):
+    # Check if exists
+    result = await db.execute(select(User).where(User.email == data.email.strip().lower()))
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+        
+    hashed_password = bcrypt.hashpw(data.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    new_user = User(
+        name=data.name,
+        email=data.email.strip().lower(),
+        role=UserRole.SUB_ADMIN,
+        hashed_password=hashed_password,
+        is_active=True
+    )
+    db.add(new_user)
+    await db.commit()
+    return {"status": "success", "id": new_user.id}
+
+@router.delete("/subadmins/{id}")
+async def delete_subadmin(id: str, db: AsyncSession = Depends(get_db), admin = Depends(require_super_admin)):
+    user = await db.get(User, id)
+    if not user or user.role != UserRole.SUB_ADMIN:
+        raise HTTPException(status_code=404, detail="Sub-admin not found")
+        
+    await db.delete(user)
+    await db.commit()
+    return {"status": "success"}
