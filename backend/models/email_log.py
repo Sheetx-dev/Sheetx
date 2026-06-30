@@ -1,33 +1,29 @@
-"""
-EmailLog model — tracks bulk email sending with per-email audit trail.
-"""
-import uuid
-from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Text, Boolean
+from sqlalchemy import Column, String, ForeignKey, DateTime, Boolean, JSON
 from sqlalchemy.orm import relationship
+from datetime import datetime, timezone
+import uuid
+
 from backend.database import Base
 
-class EmailLog(Base):
-    __tablename__ = "email_logs"
+class EmailQueue(Base):
+    __tablename__ = "email_queue"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
-    campaign_id = Column(String, ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=True)
+    client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"))
+    campaign_id = Column(String, ForeignKey("campaigns.id", ondelete="CASCADE"))
+    template_id = Column(String, ForeignKey("templates.id", ondelete="CASCADE"))
+    
     recipient_email = Column(String, nullable=False)
-    recipient_name = Column(String, default="")
-    template_used = Column(String, default="")
-    category_assigned = Column(String, default="")
-    status = Column(String, default="queued")  # queued, sent, failed, bounced
-    error_message = Column(Text, nullable=True)
-    sent_at = Column(DateTime(timezone=True), nullable=True)
-    is_follow_up = Column(Boolean, default=False)
-    whatsapp_sent = Column(Boolean, default=False)
-    opened = Column(Boolean, default=False)
-    opened_at = Column(DateTime(timezone=True), nullable=True)
+    recipient_name = Column(String, nullable=True)
+    
+    # "pending", "approved", "rejected", "sent"
+    status = Column(String, default="pending")
+    
+    # To store rendered email content or specific context if needed
+    context_data = Column(JSON, nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-    # Relationships
-    client = relationship("Client", back_populates="email_logs")
-    campaign = relationship("Campaign", back_populates="email_logs")
-
-    def __repr__(self):
-        return f"<EmailLog {self.recipient_email} ({self.status})>"
+    client = relationship("Client")
+    campaign = relationship("Campaign")
+    template = relationship("Template")
