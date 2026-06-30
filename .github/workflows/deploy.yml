@@ -53,6 +53,14 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
+      # =========================================================
+      # SECURE FIX: Safely transfers your Secret .env to the Server
+      # =========================================================
+      - name: Fix ENV file on server
+        run: |
+          echo "${{ secrets.APP_ENV_VARS }}" > /tmp/env_fixed
+          cat /tmp/env_fixed | ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "sudo bash -c 'cat > /opt/sheetx/shared/config/.env && chown root:root /opt/sheetx/shared/config/.env && chmod 600 /opt/sheetx/shared/config/.env'"
+
       - name: Deploy to EC2
         id: deploy
         run: |
