@@ -49,11 +49,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         let faqData = null;
         let footerData = null;
         let reviewsData = null;
+        let featuresData = null;
 
-        if (settings.LANDING_STEPS) stepsData = JSON.parse(settings.LANDING_STEPS);
-        if (settings.LANDING_FAQ) faqData = JSON.parse(settings.LANDING_FAQ);
-        if (settings.LANDING_REVIEWS) reviewsData = JSON.parse(settings.LANDING_REVIEWS);
+        try { if (settings.LANDING_STEPS) stepsData = JSON.parse(settings.LANDING_STEPS); } catch(e) {}
+        try { if (settings.LANDING_FAQ) faqData = JSON.parse(settings.LANDING_FAQ); } catch(e) {}
+        try { if (settings.LANDING_REVIEWS) reviewsData = JSON.parse(settings.LANDING_REVIEWS); } catch(e) {}
+        try { if (settings.LANDING_FEATURES) featuresData = JSON.parse(settings.LANDING_FEATURES); } catch(e) {}
+        try { if (settings.LANDING_FOOTER) footerData = JSON.parse(settings.LANDING_FOOTER); } catch(e) {}
         
+        // Hero Hydration
+        const elHeroBadge = document.getElementById('landing-hero-badge');
+        if (elHeroBadge && settings.LANDING_HERO_BADGE) elHeroBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span> ${settings.LANDING_HERO_BADGE}`;
+        
+        const elHeroTitle = document.getElementById('landing-hero-title');
+        if (elHeroTitle && settings.LANDING_HERO_TITLE) elHeroTitle.innerHTML = settings.LANDING_HERO_TITLE;
+        
+        const elHeroSubtitle = document.getElementById('landing-hero-subtitle');
+        if (elHeroSubtitle && settings.LANDING_HERO_SUBTITLE) elHeroSubtitle.textContent = settings.LANDING_HERO_SUBTITLE;
+        
+        const elHeroCta = document.getElementById('landing-hero-cta');
+        if (elHeroCta && settings.LANDING_HERO_CTA) elHeroCta.textContent = settings.LANDING_HERO_CTA;
+
+        // Features Hydration
+        const elFeaturesTitle = document.getElementById('landing-features-title');
+        if (elFeaturesTitle && settings.LANDING_FEATURES_TITLE) elFeaturesTitle.textContent = settings.LANDING_FEATURES_TITLE;
+        
+        const elFeaturesSubtitle = document.getElementById('landing-features-subtitle');
+        if (elFeaturesSubtitle && settings.LANDING_FEATURES_SUBTITLE) elFeaturesSubtitle.textContent = settings.LANDING_FEATURES_SUBTITLE;
+
+        // How it works Hydration
         if (settings.LANDING_HOW_IT_WORKS_TITLE) {
             const el = document.getElementById('landing-how-it-works-title');
             if (el) el.textContent = settings.LANDING_HOW_IT_WORKS_TITLE;
@@ -63,7 +87,48 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (el) el.textContent = settings.LANDING_HOW_IT_WORKS_SUBTITLE;
         }
 
+        // Partner Hydration
+        if (settings.partner_title) {
+            const el = document.getElementById('partner-title');
+            if (el) el.innerHTML = settings.partner_title;
+        }
+        if (settings.partner_subtitle) {
+            const el = document.getElementById('partner-subtitle');
+            if (el) el.textContent = settings.partner_subtitle;
+        }
+        if (settings.partner_b1_title) {
+            const el = document.getElementById('partner-b1-title');
+            if (el) el.textContent = settings.partner_b1_title;
+        }
+        if (settings.partner_b1_desc) {
+            const el = document.getElementById('partner-b1-desc');
+            if (el) el.textContent = settings.partner_b1_desc;
+        }
+        if (settings.partner_b2_title) {
+            const el = document.getElementById('partner-b2-title');
+            if (el) el.textContent = settings.partner_b2_title;
+        }
+        if (settings.partner_b2_desc) {
+            const el = document.getElementById('partner-b2-desc');
+            if (el) el.textContent = settings.partner_b2_desc;
+        }
+        if (settings.partner_b3_title) {
+            const el = document.getElementById('partner-b3-title');
+            if (el) el.textContent = settings.partner_b3_title;
+        }
+        if (settings.partner_b3_desc) {
+            const el = document.getElementById('partner-b3-desc');
+            if (el) el.textContent = settings.partner_b3_desc;
+        }
+
         // Fallbacks if not configured yet
+        if(!featuresData) featuresData = [
+            {title: "AI Matching", description: "Our engine analyses your lead notes and automatically selects the most relevant template.", color: "text-primary"},
+            {title: "Google Sheets Sync", description: "Just paste your Google Sheet URL. We read rows instantly and log the status right back to it.", color: "text-secondary"},
+            {title: "Email & WhatsApp", description: "Connect seamlessly via Gmail API & Meta Cloud API. We throttle sending speeds and handle API limits to protect your domain and number reputation automatically.", color: "text-green-400"},
+            {title: "Native WhatsApp API", description: "Go beyond email. Trigger official Meta WhatsApp templates directly from your Sheet to guarantee 98% open rates.", color: "text-green-400"}
+        ];
+
         if(!stepsData) stepsData = [
             {step_num: "01", title: "Connect your Google Sheet", description: "Paste your Google Sheet URL. We automatically read your leads instantly without complex setup."},
             {step_num: "02", title: "Define your templates", description: "Create various email templates for different types of clients or outreach scenarios."},
@@ -74,7 +139,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         if(!faqData) faqData = [
             {question: "What is Sheetx.io?", answer: "Sheetx.io is an intelligent outreach platform that syncs with Google Sheets and uses AI to match the perfect email template to your leads."},
-            {question: "Is there a free trial?", answer: "Yes, we offer a 14-day free trial on all paid plans so you can test our AI matching engine."},
+            {question: "Is there a free trial?", answer: "Yes, we offer a 5-day free trial on all paid plans so you can test our AI matching engine."},
             {question: "Do I need to import my leads?", answer: "No importing required! Just paste your Google Sheet URL, and we sync directly with your live data."},
             {question: "Will this affect my domain reputation?", answer: "We use smart sending features like built-in delays and throttling to ensure your domain reputation stays protected while scaling."},
             {question: "Can I bring my own email account?", answer: "Yes! You can connect your existing Google accounts securely via the Gmail API to send directly from your own domain."}
@@ -98,7 +163,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 {name: "Documentation", url: "/docs.html"}, 
                 {name: "Help Centre", url: "/help.html"}, 
                 {name: "API Docs", url: "/docs.html"},
-                {name: "Report a Problem / Feedback", url: "/feedback.html"},
+                {name: "Report a Problem", url: "/feedback.html"},
+                {name: "Feedback", url: "/feedback.html"},
                 {name: "System Status", url: "/status.html"}
             ]
         };
@@ -109,9 +175,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             {quote: "We operate across multiple countries. Sheetx.io is the only platform that handles all dynamic tax rules without custom workarounds.", name: "Sarah Mitchell", role: "Finance Manager", initials: "S"}
         ];
 
+        // Render Features
+        const featuresGrid = document.getElementById('landing-features-grid');
+        if(featuresGrid && Array.isArray(featuresData)) {
+            featuresGrid.innerHTML = '';
+            featuresData.forEach(feature => {
+                featuresGrid.innerHTML += `
+                    <div class="card bg-base-100 border border-white/5 hover:border-primary/50 transition-colors">
+                        <div class="card-body">
+                            <h2 class="card-title ${feature.color || 'text-primary'}">${feature.title}</h2>
+                            <p class="text-gray-400 text-sm mt-2">${feature.description}</p>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
         // Render Steps
         const stepsContainer = document.getElementById('landing-steps-container');
-        if(stepsContainer && stepsData) {
+        if(stepsContainer && Array.isArray(stepsData)) {
             stepsContainer.innerHTML = '';
             stepsData.forEach(step => {
                 stepsContainer.innerHTML += `
@@ -120,8 +202,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                             ${step.step_num}
                         </div>
                         <div>
-                            <h3 class="text-xl font-bold mb-2">₹{step.title}</h3>
-                            <p class="text-gray-400 text-sm">₹{step.description}</p>
+                            <h3 class="text-xl font-bold mb-2">${step.title}</h3>
+                            <p class="text-gray-400 text-sm">${step.description}</p>
                         </div>
                     </div>
                 `;
@@ -130,7 +212,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Render FAQ
         const faqContainer = document.getElementById('landing-faq-container');
-        if(faqContainer && faqData) {
+        if(faqContainer && Array.isArray(faqData)) {
             faqContainer.innerHTML = '';
             faqData.forEach(faq => {
                 faqContainer.innerHTML += `
@@ -140,7 +222,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             ${faq.question}
                         </div>
                         <div class="collapse-content px-6 text-gray-400"> 
-                            <p>₹{faq.answer}</p>
+                            <p>${faq.answer}</p>
                         </div>
                     </div>
                 `;
@@ -149,7 +231,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Render Testimonials
         const testimonialsContainer = document.getElementById('landing-testimonials-container');
-        if(testimonialsContainer && reviewsData) {
+        if(testimonialsContainer && Array.isArray(reviewsData)) {
             testimonialsContainer.innerHTML = '';
             reviewsData.forEach(review => {
                 testimonialsContainer.innerHTML += `
@@ -167,8 +249,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 ${review.initials || review.name.charAt(0)}
                             </div>
                             <div>
-                                <h4 class="font-bold text-white">₹{review.name}</h4>
-                                <p class="text-xs text-gray-500">₹{review.role}</p>
+                                <h4 class="font-bold text-white">${review.name}</h4>
+                                <p class="text-xs text-gray-400">${review.role}</p>
                             </div>
                         </div>
                     </div>
@@ -178,19 +260,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Render Footer
         const footerGrid = document.getElementById('landing-footer-grid');
+        if (!footerData || typeof footerData !== 'object' || Array.isArray(footerData)) footerData = null;
         if(footerGrid && footerData) {
             footerGrid.innerHTML = '';
             Object.keys(footerData).forEach(colName => {
                 const links = footerData[colName];
+                if(!Array.isArray(links)) return;
                 const linksHtml = links.map(l => {
                     let url = l.url;
-                    if (url === "#" && l.name.toLowerCase().includes("policy")) url = "/legal.html?policy=" + l.name.toLowerCase().replace(/\s+/g, '-');
-                    if (url === "#" && l.name.toLowerCase().includes("terms")) url = "/legal.html?policy=" + l.name.toLowerCase().replace(/\s+/g, '-');
-                    return `<li><a href="${url}" class="text-gray-400 hover:text-white text-sm transition-colors">₹{l.name}</a></li>`;
+                    if (url === "#" && l.name && l.name.toLowerCase().includes("policy")) url = "/legal.html?policy=" + l.name.toLowerCase().replace(/\s+/g, '-');
+                    if (url === "#" && l.name && l.name.toLowerCase().includes("terms")) url = "/legal.html?policy=" + l.name.toLowerCase().replace(/\s+/g, '-');
+                    return `<li><a href="${url}" class="text-gray-400 hover:text-white text-sm transition-colors">${l.name}</a></li>`;
                 }).join('');
                 footerGrid.innerHTML += `
                     <div>
-                        <h4 class="text-xs font-bold text-gray-500 tracking-wider uppercase mb-4">₹{colName}</h4>
+                        <h4 class="text-xs font-bold text-gray-400 tracking-wider uppercase mb-4">${colName}</h4>
                         <ul class="space-y-3">
                             ${linksHtml}
                         </ul>
@@ -204,7 +288,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const policies = await api.get('/public/policies');
             const policiesContainer = document.getElementById('footer-policies');
             if(policiesContainer && policies.length > 0) {
-                const links = policies.map(p => `<a href="/legal.html?policy=${p.slug}" class="hover:text-white transition-colors ml-4">₹{p.title}</a>`);
+                const links = policies.map(p => `<a href="/legal.html?policy=${p.slug}" class="hover:text-white transition-colors ml-4">${p.title}</a>`);
                 policiesContainer.innerHTML = links.join('');
             }
         } catch(e) {
@@ -232,7 +316,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 let featureHtml = features.map(f => `<li class="flex items-center gap-2"><svg class="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> ${f}</li>`).join('');
                 
                 let displayPrice = plan.price_monthly;
-                let totalBilled = '<div class="text-xs text-gray-500 font-medium mb-4">Billed monthly</div>';
+                let totalBilled = '<div class="text-xs text-gray-400 font-medium mb-4">Billed monthly</div>';
                 
                 if (currentCycle === 'half_yearly') {
                     let totalAmount = Math.round((plan.price_monthly * 6) * 0.85);
@@ -248,11 +332,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div class="card bg-base-200 border border-white/5 hover:border-white/20 transition-all ${plan.is_featured ? 'shadow-primary/20 shadow-2xl scale-105' : ''}">
                         <div class="card-body">
                             ${plan.is_featured ? '<div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-primary to-secondary text-white text-xs font-bold px-3 py-1 rounded-full">Most Popular</div>' : ''}
-                            <h3 class="text-xl font-bold">₹{plan.name}</h3>
+                            <h3 class="text-xl font-bold">${plan.name}</h3>
                             <div><span class="text-4xl font-extrabold">₹${displayPrice}</span><span class="text-gray-400 text-sm">/mo</span></div>
                             ${totalBilled}
                             <ul class="text-sm text-gray-300 space-y-3 mb-8 flex-1 mt-4">
-                                <li class="flex items-center gap-2"><svg class="w-4 h-4 text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg> <b>₹{plan.email_limit_daily}</b> Emails per day</li>
+                                <li class="flex items-center gap-2"><svg class="w-4 h-4 text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg> <b>${plan.email_limit_daily}</b> Emails per day</li>
                                 ${featureHtml}
                             </ul>
                             <button class="btn btn-primary w-full text-white" onclick="document.getElementById('register-modal').showModal()">Get Started</button>
@@ -321,7 +405,7 @@ if (formDemo) {
 }
 
 
-// --- Handle Unauthorized Signup Error ---
+// --- Handle Unauthorized Signup Error & Newsletter ---
 window.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('error') === 'unauthorized_signup') {
@@ -333,5 +417,134 @@ window.addEventListener('DOMContentLoaded', () => {
         // Clean URL
         window.history.replaceState({}, document.title, window.location.pathname);
     }
-});
 
+    const newsletterForm = document.getElementById('form-newsletter');
+    if (newsletterForm) {
+        newsletterForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = newsletterForm.querySelector('button');
+            const successMsg = document.getElementById('newsletter-success');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading loading-spinner loading-xs"></span>';
+            
+            const email = document.getElementById('newsletter-email').value;
+            const mobile = document.getElementById('newsletter-mobile').value;
+            
+            try {
+                await api.post('/public/newsletter/subscribe', { email, mobile });
+                newsletterForm.reset();
+                successMsg.classList.remove('hidden');
+                successMsg.classList.remove('text-error');
+                successMsg.classList.add('text-success');
+                successMsg.textContent = 'Thanks for subscribing! Check your inbox soon.';
+            } catch (err) {
+                successMsg.classList.remove('hidden');
+                successMsg.classList.remove('text-success');
+                successMsg.classList.add('text-error');
+                successMsg.textContent = 'Something went wrong. Please try again later.';
+            }
+            
+            btn.disabled = false;
+            btn.innerHTML = 'Subscribe';
+            setTimeout(() => {
+                successMsg.classList.add('hidden');
+            }, 5000);
+        });
+    }
+
+    // --- Scheduling Logic ---
+    const scheduleDate = document.getElementById('schedule-date');
+    const scheduleSlotsContainer = document.getElementById('schedule-slots-container');
+    const scheduleSlots = document.getElementById('schedule-slots');
+    const scheduleStep2 = document.getElementById('schedule-step-2');
+    const scheduleSelectedTime = document.getElementById('schedule-selected-time');
+    const formSchedule = document.getElementById('form-schedule');
+    const scheduleSuccess = document.getElementById('schedule-success');
+    const scheduleStep1 = document.getElementById('schedule-step-1');
+
+    if (scheduleDate) {
+        // Minimum date is today
+        const today = new Date().toISOString().split('T')[0];
+        scheduleDate.min = today;
+
+        scheduleDate.addEventListener('change', async (e) => {
+            const date = e.target.value;
+            if (!date) return;
+
+            scheduleSlotsContainer.classList.remove('hidden');
+            scheduleSlots.innerHTML = '<div class="col-span-full text-center py-4"><span class="loading loading-spinner text-primary"></span></div>';
+            scheduleStep2.classList.add('hidden');
+
+            try {
+                const data = await api.get(`/public/appointments/slots?date=${date}`);
+                if (data.available_slots.length === 0) {
+                    scheduleSlots.innerHTML = '<div class="col-span-full text-center text-gray-400 py-4">No slots available on this date.</div>';
+                    return;
+                }
+
+                scheduleSlots.innerHTML = '';
+                data.available_slots.forEach(slot => {
+                    const btn = document.createElement('button');
+                    btn.className = 'btn btn-outline border-white/20 text-white hover:bg-primary hover:border-primary w-full';
+                    btn.textContent = slot;
+                    btn.onclick = () => selectTimeSlot(btn, slot);
+                    scheduleSlots.appendChild(btn);
+                });
+            } catch (err) {
+                scheduleSlots.innerHTML = '<div class="col-span-full text-center text-error py-4">Failed to load slots.</div>';
+            }
+        });
+    }
+
+    function selectTimeSlot(selectedBtn, time) {
+        // Reset all buttons
+        Array.from(scheduleSlots.children).forEach(btn => {
+            btn.classList.remove('bg-primary', 'border-primary');
+            btn.classList.add('btn-outline');
+        });
+        
+        // Highlight selected
+        selectedBtn.classList.remove('btn-outline');
+        selectedBtn.classList.add('bg-primary', 'border-primary');
+        
+        scheduleSelectedTime.value = time;
+        scheduleStep2.classList.remove('hidden');
+    }
+
+    if (formSchedule) {
+        formSchedule.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btn-schedule-submit');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading loading-spinner"></span> Booking...';
+
+            const payload = {
+                name: document.getElementById('schedule-name').value,
+                email: document.getElementById('schedule-email').value,
+                date: scheduleDate.value,
+                time_slot: scheduleSelectedTime.value
+            };
+
+            try {
+                await api.post('/public/appointments/book', payload);
+                scheduleStep1.classList.add('hidden');
+                scheduleStep2.classList.add('hidden');
+                scheduleSuccess.classList.remove('hidden');
+            } catch (err) {
+                alert(err.message || "Failed to book appointment.");
+                btn.disabled = false;
+                btn.innerHTML = 'Confirm Booking';
+            }
+        });
+    }
+
+    window.resetScheduling = () => {
+        formSchedule.reset();
+        scheduleDate.value = '';
+        scheduleSlotsContainer.classList.add('hidden');
+        scheduleStep2.classList.add('hidden');
+        scheduleSuccess.classList.add('hidden');
+        scheduleStep1.classList.remove('hidden');
+    };
+});
