@@ -18,6 +18,7 @@ class Template(Base):
     body_html = Column(Text, nullable=False, default="")
     image_urls_json = Column(Text, default="[]")  # JSON array of image URLs
     banner_url = Column(String, nullable=True)
+    whatsapp_template_name = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
