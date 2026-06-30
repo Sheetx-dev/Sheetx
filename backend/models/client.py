@@ -22,10 +22,16 @@ class Client(Base):
     # Google Sheets Configuration
     # Google Sheets Configuration is now moved to the Campaign model
     credentials_json = Column(Text, nullable=True)  # service account JSON (encrypted)
+    
+    # WhatsApp Configuration
+    whatsapp_access_token = Column(Text, nullable=True)
+    whatsapp_phone_number_id = Column(String, nullable=True)
+    whatsapp_business_account_id = Column(String, nullable=True)
 
     # Usage tracking
     daily_email_limit = Column(Integer, default=50)
     emails_sent_today = Column(Integer, default=0)
+    ai_requests_today = Column(Integer, default=0)
     last_reset_date = Column(String, nullable=True)
 
     # Trial & Subscriptions
