@@ -18,6 +18,8 @@ authlib
 httpx
 itsdangerous
 python-jose[cryptography]
+bcrypt
+passlib[bcrypt]
 
 # Payments
 razorpay
