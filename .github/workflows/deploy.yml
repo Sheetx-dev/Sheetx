@@ -65,9 +65,10 @@ jobs:
           scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no .env.production ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/.env.production
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "sudo mv /tmp/.env.production /opt/sheetx/shared/config/.env && sudo chmod 644 /opt/sheetx/shared/config/.env"
 
-      # =========================================================
-      # NEW: Safer `if` block for catching failure logs!
-      # =========================================================
+      - name: Fix Supervisor Configuration
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=30 ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "sudo sed -i 's|^directory=.*|directory=/opt/sheetx/current|g' /etc/supervisor/conf.d/sheetx.conf && sudo supervisorctl reread && sudo supervisorctl update"
+
       - name: Deploy to EC2
         id: deploy
         run: |
