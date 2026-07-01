@@ -75,7 +75,13 @@ jobs:
             -o StrictHostKeyChecking=no \
             -o ConnectTimeout=30 \
             ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
-            "sudo bash /opt/sheetx/scripts/deploy.sh || (echo '🚨 DEPLOY FAILED. FETCHING ERROR LOGS...' && sudo supervisorctl tail sheetx stderr && exit 1)"
+            "sudo bash /opt/sheetx/scripts/deploy.sh" || {
+              echo "==================================================="
+              echo "🚨 DEPLOY FAILED. FETCHING SERVER CRASH LOGS..."
+              echo "==================================================="
+              ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "sudo supervisorctl status && echo '--- STDERR ---' && sudo supervisorctl tail -1000 sheetx stderr && echo '--- SUPERVISOR CONFIG ---' && cat /etc/supervisor/conf.d/sheetx.conf"
+              exit 1
+            }
 
       - name: Health check
         id: health_check
@@ -85,10 +91,10 @@ jobs:
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://sheetx.io/api/health)
           echo "Health check HTTP status: $STATUS"
           if [ "$STATUS" != "200" ]; then
-            echo "Health check FAILED — triggering rollback"
+            echo "Health check FAILED - triggering rollback"
             exit 1
           fi
-          echo "Deploy successful — https://sheetx.io is healthy"
+          echo "Deploy successful - https://sheetx.io is healthy"
 
       - name: Rollback on failure
         if: failure() && steps.deploy.conclusion != 'skipped'
