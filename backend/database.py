@@ -38,7 +38,6 @@ async def get_db():
 
 async def init_db():
     """Create all tables on startup."""
-    # Explicitly import all models so SQLAlchemy knows they exist before create_all()
     from backend.models import (
         user, client, plan, template, campaign, email_log, 
         payment, app_settings, email_queue, promo_code, image
