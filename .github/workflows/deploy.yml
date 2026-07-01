@@ -66,22 +66,18 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "sudo mv /tmp/.env.production /opt/sheetx/shared/config/.env && sudo chmod 644 /opt/sheetx/shared/config/.env"
 
       # =========================================================
-      # NEW: Dump Python Crash Logs if deployment script fails!
+      # NEW: Safer `if` block for catching failure logs!
       # =========================================================
       - name: Deploy to EC2
         id: deploy
         run: |
-          ssh -i ~/.ssh/deploy_key \
-            -o StrictHostKeyChecking=no \
-            -o ConnectTimeout=30 \
-            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
-            "sudo bash /opt/sheetx/scripts/deploy.sh" || {
-              echo "==================================================="
-              echo "🚨 DEPLOY FAILED. FETCHING SERVER CRASH LOGS..."
-              echo "==================================================="
-              ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "sudo supervisorctl status && echo '--- STDERR ---' && sudo supervisorctl tail -100 sheetx stderr && echo '--- SUPERVISOR CONFIG ---' && cat /etc/supervisor/conf.d/sheetx.conf"
-              exit 1
-            }
+          if ! ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=30 ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "sudo bash /opt/sheetx/scripts/deploy.sh"; then
+            echo "==================================================="
+            echo "🚨 DEPLOY FAILED. FETCHING SERVER CRASH LOGS..."
+            echo "==================================================="
+            ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "sudo supervisorctl status && echo '--- STDERR ---' && sudo supervisorctl tail -100 sheetx stderr && echo '--- SUPERVISOR CONFIG ---' && cat /etc/supervisor/conf.d/sheetx.conf"
+            exit 1
+          fi
 
       - name: Health check
         id: health_check
