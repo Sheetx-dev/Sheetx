@@ -21,10 +21,8 @@ SessionLocal = async_sessionmaker(
     expire_on_commit=False,
 )
 
-
 class Base(DeclarativeBase):
     pass
-
 
 async def get_db():
     """FastAPI dependency — yields an async database session."""
@@ -38,9 +36,13 @@ async def get_db():
         finally:
             await session.close()
 
-
 async def init_db():
     """Create all tables on startup."""
-    from backend.models import user, client, plan, template, email_log, payment, app_settings, newsletter, promo_code, image, appointment  # noqa: F401
+    # Explicitly import all models so SQLAlchemy knows they exist before create_all()
+    from backend.models import (
+        user, client, plan, template, campaign, email_log, 
+        payment, app_settings, email_queue, promo_code, image
+    )  # noqa: F401
+    
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
