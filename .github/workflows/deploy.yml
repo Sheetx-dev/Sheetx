@@ -79,7 +79,7 @@ jobs:
               echo "==================================================="
               echo "🚨 DEPLOY FAILED. FETCHING SERVER CRASH LOGS..."
               echo "==================================================="
-              ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "sudo supervisorctl status && echo '--- STDERR ---' && sudo supervisorctl tail -1000 sheetx stderr && echo '--- SUPERVISOR CONFIG ---' && cat /etc/supervisor/conf.d/sheetx.conf"
+              ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "sudo supervisorctl status && echo '--- STDERR ---' && sudo supervisorctl tail -100 sheetx stderr && echo '--- SUPERVISOR CONFIG ---' && cat /etc/supervisor/conf.d/sheetx.conf"
               exit 1
             }
 
