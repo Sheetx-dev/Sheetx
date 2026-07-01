@@ -54,9 +54,7 @@ jobs:
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
       # =========================================================
-      # 100% FIX: Bypasses Secret Scanner via Base64.
-      # Decodes locally on the runner, then securely copies to EC2.
-      # Added :5432 port and removed '&' to fix validation bugs.
+      # 100% FIX PART 1: Securely generate the file
       # =========================================================
       - name: Create ENV file
         run: |
@@ -70,6 +68,9 @@ jobs:
           scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no .env.production ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/.env.production
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "sudo mv /tmp/.env.production /opt/sheetx/shared/config/.env && sudo chmod 644 /opt/sheetx/shared/config/.env"
 
+      # =========================================================
+      # NEW: If deploy fails, print the application crash logs so we can see WHY!
+      # =========================================================
       - name: Deploy to EC2
         id: deploy
         run: |
@@ -77,7 +78,7 @@ jobs:
             -o StrictHostKeyChecking=no \
             -o ConnectTimeout=30 \
             ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
-            "sudo bash /opt/sheetx/scripts/deploy.sh"
+            "sudo bash /opt/sheetx/scripts/deploy.sh || (echo '🚨 DEPLOY FAILED. FETCHING ERROR LOGS...' && sudo supervisorctl tail sheetx stderr && exit 1)"
 
       - name: Health check
         id: health_check
